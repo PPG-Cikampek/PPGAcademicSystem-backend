@@ -6,13 +6,15 @@ const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
+const { v1: uuidv1 } = require('uuid')
 
 const User = require('../models/user');
 const Branch = require('../models/branch')
 const Student = require('../models/student');
 const TeachingGroup = require('../models/teachingGroup')
 const Teacher = require('../models/teacher')
-const NisCounter = require('../models/nisCounter')
+const NisCounter = require('../models/nisCounter');
+const AccountRequest = require('../models/accountRequest');
 
 
 const getUsers = async (req, res, next) => {
@@ -56,6 +58,65 @@ const getUsersById = async (req, res, next) => {
     res.json({ users: identifiedUsers.toObject({ getters: true }) });
 }
 
+const getRequestedAccountsByUserId = async (req, res, next) => {
+    const userId = req.params.userId
+
+    let identifiedTickets;
+    try {
+        identifiedTickets = await AccountRequest.find({ userId })
+
+    } catch (err) {
+        console.log(err)
+        return next(new HttpError("Internal server error occured!", 500))
+    }
+
+    if (!identifiedTickets || identifiedTickets.length === 0) {
+        return next(new HttpError(`Cannot find account requests with UserId '${userId}'`, 404))
+    }
+
+    const categorizeTickets = (data) => {
+        const categorized = {};
+
+        data.tickets.forEach(ticket => {
+            const { userId, ticketId, status, createdTime, ...accountList } = ticket;
+
+            if (!categorized[userId]) {
+                categorized[userId] = { userId, tickets: [] };
+            }
+
+            let existingTicket = categorized[userId].tickets.find(t => t.ticketId === ticketId);
+
+            if (!existingTicket) {
+                existingTicket = { ticketId, status, createdTime, accountList: [] };
+                categorized[userId].tickets.push(existingTicket);
+            }
+
+            existingTicket.accountList.push(accountList);
+        });
+
+        return Object.values(categorized);
+    };
+
+    res.json(categorizeTickets({ tickets: identifiedTickets.map(ticket => ticket.toObject({ getters: true })) })[0]);
+}
+
+const getRequestedAccountsByTicketId = async (req, res, next) => {
+    const ticketId = req.params.ticketId
+
+    let identifiedAccountRequests
+    try {
+        identifiedAccountRequests = await AccountRequest.find({ ticketId }, "-ticketId -userId -teachingGroupId -createdTime -status")
+    } catch (err) {
+        console.log(err)
+        return next(new HttpError("Internal server error occured!", 500))
+    }
+
+    if (!identifiedAccountRequests || identifiedAccountRequests.length === 0) {
+        return next(new HttpError(`Cannot find account requests with ticketId '${ticketId}'`, 404))
+    }
+
+    res.json(identifiedAccountRequests.map(ticket => ticket.toObject({ getters: true })))
+}
 
 const login = async (req, res, next) => {
     const { email, password, nis } = req.body;
@@ -208,6 +269,35 @@ const bulkCreateUsersAndStudents = async (req, res, next) => {
     }
 };
 
+const requestAccounts = async (req, res, next) => {
+    const { accountList } = req.body;
+    const createdTime = new Date();
+
+    console.log(accountList);
+
+    const ticketId = uuidv1(); // Generate ticketId once
+
+    const createDocuments = accountList.map(({ teachingGroupId, name, email, dateOfBirth, className, accountRole }) => ({
+        userId: req.userData.userId,
+        teachingGroupId,
+        name,
+        email: email || '',
+        dateOfBirth,
+        className: className || '',
+        accountRole,
+        status: "Pending",
+        createdTime,
+        ticketId // Use the same ticketId for all documents
+    }));
+
+    try {
+        await AccountRequest.insertMany(createDocuments);
+        res.status(201).json({ message: 'Berhasil membuat permintaan!' });
+    } catch (err) {
+        console.error(err);
+        return next(new HttpError('Gagal membuat permintaan!', 500));
+    }
+};
 
 
 const createUser = async (req, res, next) => {
@@ -488,13 +578,13 @@ const requestResetPassword = async (req, res, next) => {
     const transporter = nodemailer.createTransport({
         service: 'gmail',
         auth: {
-            user: 'agency6400@gmail.com',
-            pass: 'ataz aaws ktan gumm'
+            user: process.env.SERVER_EMAIL,
+            pass: process.env.SERVER_EMAIL_PASSWORD
         }
     });
 
     const mailOptions = {
-        from: 'agency6400@gmail.com',
+        from: process.env.SERVER_EMAIL,
         to: user.email,
         subject: 'Reset Kata Sandi Sistem E-Presensi',
         html: `<p>Anda meminta untuk mereset password</p>
@@ -575,8 +665,8 @@ const requestVerifyEmail = async (req, res, next) => {
     const transporter = nodemailer.createTransport({
         service: 'gmail',
         auth: {
-            user: 'agency6400@gmail.com',
-            pass: 'ataz aaws ktan gumm'
+            user: process.env.SERVER_EMAIL,
+            pass: process.env.SERVER_EMAIL_PASSWORD
         }
     });
 
@@ -584,7 +674,7 @@ const requestVerifyEmail = async (req, res, next) => {
     if (newEmail) {
         const token = jwt.sign({ email, newEmail }, process.env.JWT_KEY, { expiresIn: '1h' });
         mailOptions = {
-            from: 'agency6400@gmail.com',
+            from: process.env.SERVER_EMAIL,
             to: newEmail,
             subject: 'Pengubahan Email E-Presensi',
             html: `<p>Anda meminta mengubah Email E-Presensi</p>
@@ -595,7 +685,7 @@ const requestVerifyEmail = async (req, res, next) => {
     } else {
         const token = jwt.sign({ email, newEmail: email }, process.env.JWT_KEY, { expiresIn: '1h' });
         mailOptions = {
-            from: 'agency6400@gmail.com',
+            from: process.env.SERVER_EMAIL,
             to: user.email,
             subject: 'Verifikasi Email E-Presensi',
             html: `<p>Verifikasi Email E-Presensi</p>
@@ -719,3 +809,6 @@ exports.requestVerifyEmail = requestVerifyEmail
 exports.verifyEmail = verifyEmail
 exports.updateProfileImage = updateProfileImage
 exports.changeUserPassword = changeUserPassword
+exports.requestAccounts = requestAccounts;
+exports.getRequestedAccountsByUserId = getRequestedAccountsByUserId;
+exports.getRequestedAccountsByTicketId = getRequestedAccountsByTicketId;

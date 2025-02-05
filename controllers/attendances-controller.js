@@ -100,7 +100,7 @@ const createNewAttendanceForClass = async (req, res, next) => {
                 status: "Tanpa Keterangan",
                 attributes: false,
                 violations: { attribute: false, attitude: false, tidiness: false },
-                teachersNotes,
+                teachersNotes: "",
                 studentId,
                 classId,
             });
