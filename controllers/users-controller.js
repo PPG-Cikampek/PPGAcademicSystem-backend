@@ -130,9 +130,13 @@ const login = async (req, res, next) => {
             existingUser = await User.findOne({ email: email })
                 .populate({ path: 'teachingGroupId', select: 'name', populate: { path: 'branchId', select: 'name' } });
         } else if (nis) {
-            const student = await Student.findOne({ nis: nis }).populate('userId');
+            const student = await Student.findOne({ nis: nis }).populate({
+                path: 'userId',
+                populate: { path: 'teachingGroupId', select: 'name', populate: { path: 'branchId', select: 'name' } }
+            });
             existingUser = student ? student.userId : null;
         }
+        
     } catch (err) {
         return next(new HttpError('Internal server error occurred!', 500));
     }

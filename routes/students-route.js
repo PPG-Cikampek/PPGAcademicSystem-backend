@@ -8,6 +8,7 @@ const router = express.Router();
 router.get('/', studentsController.getStudents);
 router.get('/:studentId', studentsController.getStudentById);
 router.get('/login/:nis', studentsController.getStudentByNis);
+router.get('/user/:userId', studentsController.getStudentByUserId)
 router.get('/teaching-group/:teachingGroupId', studentsController.getStudentsByTeachingGroupId);
 // router.get('/teachingGroupYear/:teachingGroupYearId', classController.getClassesByTeachingGroupYearId);
 

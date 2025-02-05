@@ -80,6 +80,30 @@ const getStudentByNis = async (req, res, next) => {
     res.json({ student });
 }
 
+const getStudentByUserId = async (req, res, next) => {
+    const userId = req.params.userId;
+
+    let student;
+
+    try {
+        student = await Student.findOne({ userId })
+            .populate({ path: 'userId', select: 'teachingGroupId', populate: { path: 'teachingGroupId', select: 'name', populate: { path: 'branchId', select: 'name' } } })
+        // .populate({
+        //     path: 'classIds',
+        //     populate: [
+        //         { path: 'teachingGroupYearId', populate: { path: 'academicYearId', select: ['name', 'isActive'] } },
+        //         { path: 'attendances', select: 'forDate' }
+        //     ]
+        // });
+    } catch (err) {
+        console.error(err);
+        return next(new HttpError("Internal server error occurred!", 500));
+    }
+
+    console.log(`Get student by userId ${userId} requested`);
+    res.json({ student: student.toObject({ getters: true }) });
+}
+
 const getStudentReportByIdAndClassId = async (req, res, next) => {
     const { studentId, classId } = req.body;
 
@@ -233,6 +257,7 @@ const updateStudent = async (req, res, next) => {
 
 exports.getStudentById = getStudentById
 exports.getStudentByNis = getStudentByNis
+exports.getStudentByUserId = getStudentByUserId
 exports.getStudentReportByIdAndClassId = getStudentReportByIdAndClassId
 exports.getStudents = getStudents
 exports.getStudentsByTeachingGroupId = getStudentsByTeachingGroupId
