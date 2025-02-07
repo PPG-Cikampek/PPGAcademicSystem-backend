@@ -222,8 +222,9 @@ const bulkCreateUsersAndStudents = async (req, res, next) => {
         } catch (err) {
             return next(new HttpError('Gagal menambahkan user!', 500));
         }
+        
         const newUser = {
-            name: `Siswa ${i + 1}`,
+            name: `Siswa ${nis}`,
             email: userEmail,
             password: hashedPassword, // Default password
             role,
@@ -357,12 +358,12 @@ const createUser = async (req, res, next) => {
 
     let teacher;
     if (role === 'teacher') {
-        const { nid } = teacherDetails;
-
+        const { nig } = teacherDetails;
+        console.log(nig)
         teacher = new Teacher({
             userId: newUser._id, // Reference to the new user's ID
             name,
-            nid,
+            nig,
             phone: "",
             position: "",
             dateOfBirth: "",

@@ -5,7 +5,7 @@ const Schema = mongoose.Schema;
 const teacherSchema = new Schema({
     userId: { type: mongoose.Types.ObjectId, required: true, ref: 'User' },
     name: { type: String, required: true },
-    nid: { type: String, required: true, unique: true },
+    nig: { type: String, required: true, unique: true },
     phone: { type: String, required: false },
     position: { type: String, required: false },
     dateOfBirth: { type: Date, required: false },

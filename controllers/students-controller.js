@@ -215,12 +215,12 @@ const createStudent = async (req, res, next) => {
 }
 
 const updateStudent = async (req, res, next) => {
-    const { name, dateOfBirth, gender, parentName, address } = req.body;
+    const { nis, name, dateOfBirth, gender, parentName, address } = req.body;
     const studentId = req.params.studentId;
 
     let student;
     try {
-        const updateData = { name, dateOfBirth, gender, address, parentName, isProfileComplete: true };
+        const updateData = { ...(nis && { nis }), name, dateOfBirth, gender, address, parentName, isProfileComplete: true };
         if (req.file) {
             updateData.image = req.file.path.replace(/\\/g, '/');
             updateData.originalImagePath = req.file.path;
@@ -231,6 +231,7 @@ const updateStudent = async (req, res, next) => {
             updateData,
             { new: true, runValidators: true }
         );
+
 
         if (student) {
             await User.findByIdAndUpdate(

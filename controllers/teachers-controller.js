@@ -147,7 +147,7 @@ const updateTeacher = async (req, res, next) => {
         return next(new HttpError(`Could not find a teacher with ID '${teacherId}'`, 404));
     }
 
-    console.log(`teacher with nis '${teacher.nid}' updated!`);
+    console.log(`teacher with nis '${teacher.nig}' updated!`);
     res.status(200).json({ message: 'Berhasil melengkapi profile!', teacher: teacher.toObject({ getters: true }) });
 }
 

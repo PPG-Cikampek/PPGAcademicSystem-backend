@@ -98,7 +98,6 @@ const createNewAttendanceForClass = async (req, res, next) => {
                 forDate,
                 timestamp,
                 status: "Tanpa Keterangan",
-                attributes: false,
                 violations: { attribute: false, attitude: false, tidiness: false },
                 teachersNotes: "",
                 studentId,
@@ -312,7 +311,7 @@ const updateAttendancesByIds = async (req, res, next) => {
 //                 path: 'classes',
 //                 populate: [
 //                     { path: 'attendances', populate: { path: 'studentId', select: ['name', 'nis', 'image'] } },
-//                     { path: 'teachers', select: ['name', 'nid'] }
+//                     { path: 'teachers', select: ['name', 'nig'] }
 //                 ]
 //             })
 //             .populate({
@@ -400,7 +399,7 @@ const getAttendanceReports = async (req, res, next) => {
                 path: 'classes',
                 populate: [
                     { path: 'attendances', populate: { path: 'studentId', select: ['name', 'nis', 'image'] } },
-                    { path: 'teachers', select: ['name', 'nid'] }
+                    { path: 'teachers', select: ['name', 'nig'] }
                 ]
             })
             .populate({

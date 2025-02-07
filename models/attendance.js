@@ -6,7 +6,6 @@ const attendanceSchema = new Schema({
     forDate: { type: Date, required: true },
     timestamp: { type: Date, required: true },
     status: { type: String, required: true },
-    attributes: { type: Boolean, required: true },
     violations: { type: Object, required: true },
     updateReason: { type: String, required: false },
     teachersNotes: { type: String, required: false },

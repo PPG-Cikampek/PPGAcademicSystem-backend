@@ -1,5 +1,6 @@
 uploads
 nodemon.json
+deploy.sh
 
 # Logs
 logs
