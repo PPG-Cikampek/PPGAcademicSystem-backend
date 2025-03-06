@@ -728,7 +728,6 @@ const verifyEmail = async (req, res, next) => {
 };
 
 const updateProfileImage = async (req, res, next) => {
-
     const userId = req.params.userId;
     let user;
     try {
@@ -741,11 +740,24 @@ const updateProfileImage = async (req, res, next) => {
                 userId,
                 updateData,
                 { new: true, runValidators: true }
-            )
+            );
+
+            if (user.role === 'teacher') {
+                await Teacher.findOneAndUpdate(
+                    { userId: user._id },
+                    { image: updateData.image, originalImagePath: updateData.originalImagePath },
+                    { new: true, runValidators: true }
+                );
+            } else if (user.role === 'student') {
+                await Student.findOneAndUpdate(
+                    { userId: user._id },
+                    { image: updateData.image, originalImagePath: updateData.originalImagePath },
+                    { new: true, runValidators: true }
+                );
+            }
         } else {
             return next(new HttpError('File tidak tersedia!', 400));
         }
-
     } catch (err) {
         console.error(err);
         const error = new HttpError('Gagal memperbarui foto profil.', 500);
@@ -754,8 +766,7 @@ const updateProfileImage = async (req, res, next) => {
 
     console.log(`Updated profile image for user ${user.email}`);
     res.status(200).json({ message: 'Berhasil memperbarui foto profil!' });
-
-}
+};
 
 const changeUserPassword = async (req, res, next) => {
     const { email, oldPassword, newPassword, confirmNewPassword } = req.body;
