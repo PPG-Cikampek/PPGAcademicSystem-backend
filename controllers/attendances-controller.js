@@ -500,7 +500,7 @@ const getAttendanceReports = async (req, res, next) => {
             return Object.entries(violationCounts).map(([violation, count]) => ({ violation, count }));
         };
 
-        console.log("TEASTSTSRT" + x    (getOverallStats(teachingGroupYears)))
+        console.log("TEASTSTSRT" + (getOverallStats(teachingGroupYears)))
         console.log(`Retrieved attendance reports based on filters`);
         return res.status(200).json({ teachingGroupYears, overallStats: getOverallStats(teachingGroupYears), violationStats: getViolationStats(teachingGroupYears) });
 
