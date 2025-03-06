@@ -461,8 +461,48 @@ const getAttendanceReports = async (req, res, next) => {
             return res.status(200).json([]); // Or handle not found error if that's preferred
         }
 
+        const getOverallStats = (data) => {
+            const attendances = [];
+            data.forEach((year) => {
+                year.classes.forEach((cls) => {
+                    cls.attendances.forEach((att) => {
+                        attendances.push(att.status);
+                    });
+                });
+            });
+            const statusCounts = attendances.reduce((acc, status) => {
+                acc[status] = (acc[status] || 0) + 1;
+                return acc;
+            }, {});
+            const total = attendances.length;
+            return Object.keys(statusCounts).map((status) => ({
+                status,
+                count: statusCounts[status],
+                percentage: Math.round((statusCounts[status] / total) * 10000) / 100 ,
+            })).sort((a, b) => a.status.localeCompare(b.status));
+        };
+
+        const getViolationStats = (data) => {
+            const violationCounts = {};
+
+            data.forEach((groupYear) => {
+                groupYear.classes.forEach((cls) => {
+                    cls.attendances.forEach((attendance) => {
+                        Object.entries(attendance.violations).forEach(([violation, occurred]) => {
+                            if (occurred) {
+                                violationCounts[violation] = (violationCounts[violation] || 0) + 1;
+                            }
+                        });
+                    });
+                });
+            });
+
+            return Object.entries(violationCounts).map(([violation, count]) => ({ violation, count }));
+        };
+
+        console.log("TEASTSTSRT" + x    (getOverallStats(teachingGroupYears)))
         console.log(`Retrieved attendance reports based on filters`);
-        return res.status(200).json({ teachingGroupYears });
+        return res.status(200).json({ teachingGroupYears, overallStats: getOverallStats(teachingGroupYears), violationStats: getViolationStats(teachingGroupYears) });
 
     } catch (error) {
         console.error('Error retrieving attendance reports:', error);
