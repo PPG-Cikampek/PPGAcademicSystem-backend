@@ -16,6 +16,7 @@ const attendancesRoutes = require('./routes/attendances-route');
 const dashboardRoutes = require('./routes/dashboard-route');
 const journalsRoutes = require('./routes/journals-route');
 const materialProgressesRoutes = require('./routes/materialProgresses-route');
+const munaqasyahRoutes = require('./routes/munaqasyahs-route');
 const HttpError = require('./models/http-error');
 
 const app = express();
@@ -60,6 +61,7 @@ app.use('/api/attendances', attendancesRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/journals', journalsRoutes);
 app.use('/api/materialProgress', materialProgressesRoutes);
+app.use('/api/munaqasyah', munaqasyahRoutes);
 
 // Catch-all route for handling unknown routes
 app.use((req, res, next) => {
