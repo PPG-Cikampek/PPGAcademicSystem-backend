@@ -8,6 +8,7 @@ const checkAuth = require('../middlewares/check-auth')
 const router = express.Router();
 
 router.get('/', usersController.getUsers);
+router.get('/account-requests', usersController.getRequestedAccountsByUserId);
 router.get('/:userId', usersController.getUsersById);
 router.get('/account-requests/:userId', usersController.getRequestedAccountsByUserId);
 router.get('/account-requests/ticket/:ticketId', usersController.getRequestedAccountsByTicketId);
@@ -33,7 +34,7 @@ router.post('/image-upload/:userId', fileUpload.single('image'), usersController
 
 
 router.patch('/:userId', checkAuth, usersController.updateUser);
-
+router.patch('/account-requests/ticket', usersController.patchRequestedAccountsByTicketId);
 
 router.delete('/bulk-delete', checkAuth, usersController.bulkDeleteUsers);
 

@@ -63,60 +63,74 @@ const getRequestedAccountsByUserId = async (req, res, next) => {
 
     let identifiedTickets;
     try {
-        identifiedTickets = await AccountRequest.find({ userId })
+        if (userId) {
+            console.log('looking tickets with userId')
+            identifiedTickets = await AccountRequest.find({ userId })
+        } else {
+            console.log('looking tickets without userId')
+            identifiedTickets = await AccountRequest.find()
+                .populate({ path: 'teachingGroupId', select: 'name', populate: { path: 'branchId', select: 'name' } })
+                .populate({ path: 'userId', select: 'name' })
+        }
 
     } catch (err) {
         console.log(err)
         return next(new HttpError("Internal server error occured!", 500))
     }
 
-    if (!identifiedTickets || identifiedTickets.length === 0) {
-        return next(new HttpError(`Cannot find account requests with UserId '${userId}'`, 404))
-    }
-
-    const categorizeTickets = (data) => {
-        const categorized = {};
-
-        data.tickets.forEach(ticket => {
-            const { userId, ticketId, status, createdTime, ...accountList } = ticket;
-
-            if (!categorized[userId]) {
-                categorized[userId] = { userId, tickets: [] };
-            }
-
-            let existingTicket = categorized[userId].tickets.find(t => t.ticketId === ticketId);
-
-            if (!existingTicket) {
-                existingTicket = { ticketId, status, createdTime, accountList: [] };
-                categorized[userId].tickets.push(existingTicket);
-            }
-
-            existingTicket.accountList.push(accountList);
-        });
-
-        return Object.values(categorized);
-    };
-
-    res.json(categorizeTickets({ tickets: identifiedTickets.map(ticket => ticket.toObject({ getters: true })) })[0]);
+    res.json({ tickets: identifiedTickets.map(ticket => ticket.toObject({ getters: true })) });
 }
 
 const getRequestedAccountsByTicketId = async (req, res, next) => {
     const ticketId = req.params.ticketId
 
-    let identifiedAccountRequests
+    let identifiedTicket
     try {
-        identifiedAccountRequests = await AccountRequest.find({ ticketId }, "-ticketId -userId -teachingGroupId -createdTime -status")
+        identifiedTicket = await AccountRequest.find({ ticketId }, "-ticketId -userId -teachingGroupId -createdTime -status")
     } catch (err) {
         console.log(err)
         return next(new HttpError("Internal server error occured!", 500))
     }
 
-    if (!identifiedAccountRequests || identifiedAccountRequests.length === 0) {
+    if (!identifiedTicket || identifiedTicket.length === 0) {
         return next(new HttpError(`Cannot find account requests with ticketId '${ticketId}'`, 404))
     }
 
-    res.json(identifiedAccountRequests.map(ticket => ticket.toObject({ getters: true })))
+    console.log(identifiedTicket)
+
+    res.json(identifiedTicket.map(ticket => ticket.toObject({ getters: true })))
 }
+
+const patchRequestedAccountsByTicketId = async (req, res, next) => {
+    const { ticketId, respond } = req.body;
+
+    console.log(req.body)
+    console.log("TICKET ID IS " + ticketId)
+
+    let identifiedTicket;
+    try {
+        identifiedTicket = await AccountRequest.findOne({ ticketId })
+    } catch (err) {
+        console.log(err)
+        return next(new HttpError("Internal server error occured!", 500))
+    }
+
+    if (!identifiedTicket) {
+        return next(new HttpError(`Cannot find account requests with ticketId '${ticketId}'`, 404))
+    }
+
+    identifiedTicket.status = respond;
+
+    try {
+        await identifiedTicket.save();
+        res.json({ message: 'Berhasil Mengupdate Tiket!', ticket: identifiedTicket.toObject({ getters: true }) });
+    } catch (err) {
+        console.error(err);
+        return next(new HttpError('Gagal Mengupdate Tiket!', 500));
+    }
+
+}
+
 
 const login = async (req, res, next) => {
     const { email, password, nis } = req.body;
@@ -136,7 +150,7 @@ const login = async (req, res, next) => {
             });
             existingUser = student ? student.userId : null;
         }
-        
+
     } catch (err) {
         return next(new HttpError('Internal server error occurred!', 500));
     }
@@ -222,7 +236,7 @@ const bulkCreateUsersAndStudents = async (req, res, next) => {
         } catch (err) {
             return next(new HttpError('Gagal menambahkan user!', 500));
         }
-        
+
         const newUser = {
             name: `Siswa ${nis}`,
             email: userEmail,
@@ -275,28 +289,24 @@ const bulkCreateUsersAndStudents = async (req, res, next) => {
 };
 
 const requestAccounts = async (req, res, next) => {
-    const { accountList } = req.body;
+    const { teachingGroupId, accountList } = req.body;
     const createdTime = new Date();
 
     console.log(accountList);
 
     const ticketId = uuidv1(); // Generate ticketId once
 
-    const createDocuments = accountList.map(({ teachingGroupId, name, email, dateOfBirth, className, accountRole }) => ({
+    const createRequest = new AccountRequest({
         userId: req.userData.userId,
         teachingGroupId,
-        name,
-        email: email || '',
-        dateOfBirth,
-        className: className || '',
-        accountRole,
-        status: "Pending",
+        ticketId,
         createdTime,
-        ticketId // Use the same ticketId for all documents
-    }));
+        status: 'pending',
+        accountList
+    });
 
     try {
-        await AccountRequest.insertMany(createDocuments);
+        await createRequest.save();
         res.status(201).json({ message: 'Berhasil membuat permintaan!' });
     } catch (err) {
         console.error(err);
@@ -581,7 +591,9 @@ const requestResetPassword = async (req, res, next) => {
     }
 
     const transporter = nodemailer.createTransport({
-        service: 'gmail',
+        host: 'smtp.zoho.com',
+        port: 465,
+        secure: true, // true for 465, false for other ports
         auth: {
             user: process.env.SERVER_EMAIL,
             pass: process.env.SERVER_EMAIL_PASSWORD
@@ -668,7 +680,9 @@ const requestVerifyEmail = async (req, res, next) => {
     }
 
     const transporter = nodemailer.createTransport({
-        service: 'gmail',
+        host: 'smtp.zoho.com',
+        port: 465,
+        secure: true, // true for 465, false for other ports
         auth: {
             user: process.env.SERVER_EMAIL,
             pass: process.env.SERVER_EMAIL_PASSWORD
@@ -676,14 +690,14 @@ const requestVerifyEmail = async (req, res, next) => {
     });
 
     let mailOptions;
-    if (newEmail) {
+    if (isNewEmail) {
         const token = jwt.sign({ email, newEmail }, process.env.JWT_KEY, { expiresIn: '1h' });
         mailOptions = {
             from: process.env.SERVER_EMAIL,
             to: newEmail,
-            subject: 'Pengubahan Email E-Presensi',
-            html: `<p>Anda meminta mengubah Email E-Presensi</p>
-                   <p>Klik Tautan Berikut <a href="http://localhost:3000/verify-email/${token}">link</a> untuk memverifikasi email baru Anda.</p>
+            subject: 'Pengubahan Email Sistem Akademik PPG',
+            html: `<p>Anda meminta mengubah Email Sistem Akademik PPG</p>
+                   <p>Klik Tautan Berikut <a href="${process.env.BASE_URL}/users/verify-email/${token}">link</a> untuk memverifikasi email baru Anda.</p>
                    <br>
                    <p>Link di atas berlaku selama 1 jam.</p> `
         };
@@ -692,9 +706,9 @@ const requestVerifyEmail = async (req, res, next) => {
         mailOptions = {
             from: process.env.SERVER_EMAIL,
             to: user.email,
-            subject: 'Verifikasi Email E-Presensi',
-            html: `<p>Verifikasi Email E-Presensi</p>
-                   <p>Klik Tautan Berikut <a href="http://localhost:3000/verify-email/${token}">link</a> untuk memverifikasi email Anda.</p>
+            subject: 'Verifikasi Email Sistem Akademik PPG',
+            html: `<p>Verifikasi Email Sistem Akademik PPG</p>
+                   <p>Klik Tautan Berikut <a href="${process.env.BASE_URL}/users/verify-email/${token}">link</a> untuk memverifikasi email Anda.</p>
                    <br>
                    <p>Link di atas berlaku selama 1 jam.</p> `
         };
@@ -828,3 +842,4 @@ exports.changeUserPassword = changeUserPassword
 exports.requestAccounts = requestAccounts;
 exports.getRequestedAccountsByUserId = getRequestedAccountsByUserId;
 exports.getRequestedAccountsByTicketId = getRequestedAccountsByTicketId;
+exports.patchRequestedAccountsByTicketId = patchRequestedAccountsByTicketId;
