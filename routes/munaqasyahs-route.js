@@ -1,6 +1,7 @@
 const express = require('express');
 
 const munaqasyahController = require('../controllers/munaqasyahs-controller')
+const checkAuth = require('../middlewares/check-auth')
 
 const router = express.Router();
 
@@ -13,8 +14,11 @@ router.get('/questions/class/:classGrade', munaqasyahController.getMunaqasyahQue
 
 router.post('/questions', munaqasyahController.createMunaqasyahQuestion);
 
+router.patch('/questions/:questionId', checkAuth, munaqasyahController.patchQuestionById);
+router.delete('/questions/:questionId', checkAuth, munaqasyahController.deleteQuestionById);
+
 // router.delete('/:userId', usersController.deleteUser);
 
 
 
-module.exports = router; 
+module.exports = router;

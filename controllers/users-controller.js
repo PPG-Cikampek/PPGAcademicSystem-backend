@@ -51,7 +51,7 @@ const getUsersById = async (req, res, next) => {
     }
 
     if (!identifiedUsers || identifiedUsers.length === 0) {
-        return next(new HttpError(`Cannot find user with id '${placeId}'`, 404))
+        return next(new HttpError(`Cannot find user with id '${userId}'`, 404))
     }
 
     console.log(`Get user data for id ${userId}`)
