@@ -728,7 +728,11 @@ const verifyEmail = async (req, res, next) => {
     const { token } = req.params;
     try {
         const decoded = jwt.verify(token, process.env.JWT_KEY);
-        const user = await User.findOneAndUpdate({ email: decoded.newEmail });
+
+        const user = await User.findOneAndUpdate(
+            { email: decoded.email },
+            { email: decoded.newEmail },
+            { new: true });
 
         user.isEmailVerified = true;
         await user.save();
