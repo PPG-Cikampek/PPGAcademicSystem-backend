@@ -697,7 +697,7 @@ const requestVerifyEmail = async (req, res, next) => {
             to: newEmail,
             subject: 'Pengubahan Email Sistem Akademik PPG',
             html: `<p>Anda meminta mengubah Email Sistem Akademik PPG</p>
-                   <p>Klik Tautan Berikut <a href="${process.env.BASE_URL}/users/verify-email/${token}">link</a> untuk memverifikasi email baru Anda.</p>
+                   <p>Klik Tautan Berikut <a href="${process.env.BASE_URL}/verify-email/${token}">link</a> untuk memverifikasi email baru Anda.</p>
                    <br>
                    <p>Link di atas berlaku selama 1 jam.</p> `
         };
@@ -708,7 +708,7 @@ const requestVerifyEmail = async (req, res, next) => {
             to: user.email,
             subject: 'Verifikasi Email Sistem Akademik PPG',
             html: `<p>Verifikasi Email Sistem Akademik PPG</p>
-                   <p>Klik Tautan Berikut <a href="${process.env.BASE_URL}/users/verify-email/${token}">link</a> untuk memverifikasi email Anda.</p>
+                   <p>Klik Tautan Berikut <a href="${process.env.BASE_URL}/verify-email/${token}">link</a> untuk memverifikasi email Anda.</p>
                    <br>
                    <p>Link di atas berlaku selama 1 jam.</p> `
         };
