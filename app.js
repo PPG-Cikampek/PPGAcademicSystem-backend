@@ -51,6 +51,9 @@ app.use((req, res, next) => {
     next();
 });
 
+// Initialize backup scheduler
+require('./scheduler/backup-scheduler');
+
 // Routes
 app.use('/api/users', usersRoutes);
 app.use('/api/levels', levelsRoutes);
