@@ -3,6 +3,40 @@ const mongoose = require('mongoose');
 
 const Munaqasyah = require('../models/munaqasyah');
 
+const getClassesInfo = async (req, res, next) => {
+    try {
+        const aggregateResult = await Munaqasyah.aggregate([
+            {
+                $group: {
+                    _id: '$classGrade',
+                    questionCount: { $sum: 1 }
+                }
+            }
+        ]);
+
+        const grades = [
+            { grade: 'pra-paud', label: 'Kelas Pra-Paud' },
+            { grade: 'paud', label: 'Kelas Paud' },
+            { grade: '1', label: 'Kelas 1' },
+            { grade: '2', label: 'Kelas 2' },
+            { grade: '3', label: 'Kelas 3' },
+            { grade: '4', label: 'Kelas 4' },
+            { grade: '5', label: 'Kelas 5' },
+            { grade: '6', label: 'Kelas 6' }
+        ];
+
+        const formattedResult = grades.map(gradeInfo => ({
+            ...gradeInfo,
+            questionCount: aggregateResult.find(item => item._id === gradeInfo.grade)?.questionCount || 0
+        }));
+
+        res.json(formattedResult);
+    } catch (err) {
+        console.error(err);
+        return next(new HttpError("Internal server error occurred!", 500));
+    }
+};
+
 const getMunaqasyahQuestions = async (req, res, next) => {
     let munaqasyahQuestions;
 
@@ -137,6 +171,7 @@ const deleteQuestionById = async (req, res, next) => {
     res.json({ message: "Berhasil menghapus soal!" });
 };
 
+exports.getClassesInfo = getClassesInfo;
 exports.getMunaqasyahQuestions = getMunaqasyahQuestions;
 exports.getQuestionById = getQuestionById;
 exports.getMunaqasyahQuestionsByClassGrades = getMunaqasyahQuestionsByClassGrades;

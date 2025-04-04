@@ -5,6 +5,8 @@ const checkAuth = require('../middlewares/check-auth')
 
 const router = express.Router();
 
+router.get('/classes', munaqasyahController.getClassesInfo);
+
 router.get('/questions', munaqasyahController.getMunaqasyahQuestions);
 router.get('/questions/:questionId', munaqasyahController.getQuestionById);
 router.get('/questions/class/:classGrade', munaqasyahController.getMunaqasyahQuestionsByClassGrades);

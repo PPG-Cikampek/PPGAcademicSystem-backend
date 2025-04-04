@@ -37,7 +37,9 @@ app.use('/api/uploads/images', express.static(path.join(__dirname, 'uploads', 'i
 // Logging middleware to check request paths
 app.use((req, res, next) => {
     console.log(`Request URL: ${req.url}`);
-    next();
+    setTimeout(() => {
+        next();
+    }, 0); // Simulate server load with a 1-second delay
 });
 
 // CORS handling
