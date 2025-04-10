@@ -17,6 +17,7 @@ router.get('/questions/class/:classGrade', munaqasyahController.getMunaqasyahQue
 router.post('/questions', munaqasyahController.createMunaqasyahQuestion);
 
 router.patch('/questions/:questionId', checkAuth, munaqasyahController.patchQuestionById);
+router.patch('/questions/:questionId/status', checkAuth, munaqasyahController.patchQuestionStatusById);
 router.delete('/questions/:questionId', checkAuth, munaqasyahController.deleteQuestionById);
 
 // router.delete('/:userId', usersController.deleteUser);

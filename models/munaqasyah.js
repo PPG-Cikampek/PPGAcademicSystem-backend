@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const Schema = mongoose.Schema;
 
 const munaqasyahSchema = new Schema({
+    status: { type: String, required: true },
     classGrade: { type: String, required: true },
     type: { type: String, required: true },
     category: { type: String, required: true },

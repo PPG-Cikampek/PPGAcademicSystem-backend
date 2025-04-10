@@ -145,6 +145,34 @@ const patchQuestionById = async (req, res, next) => {
     res.json({ message: "Berhasil meng-update soal!", question: existingQuestion.toObject({ getters: true }) });
 };
 
+const patchQuestionStatusById = async (req, res, next) => {
+    const questionId = req.params.questionId;
+    const { status } = req.body;
+
+    let existingQuestion;
+    try {
+        existingQuestion = await Munaqasyah.findOneAndUpdate(
+            { _id: questionId },
+            { status },
+            { new: true }
+        );
+
+        if (!existingQuestion) {
+            return next(new HttpError("Question not found!", 404));
+        }
+
+        console.log(`Updated munaqasyah question with id ${questionId}`);
+        res.json({
+            message: "Berhasil meng-update status soal!",
+            question: existingQuestion.toObject({ getters: true })
+        });
+
+    } catch (err) {
+        console.error(err);
+        return next(new HttpError("Internal server error occurred!", 500));
+    }
+};
+
 const deleteQuestionById = async (req, res, next) => {
     const questionId = req.params.questionId;
 
@@ -177,4 +205,5 @@ exports.getQuestionById = getQuestionById;
 exports.getMunaqasyahQuestionsByClassGrades = getMunaqasyahQuestionsByClassGrades;
 exports.createMunaqasyahQuestion = createMunaqasyahQuestion;
 exports.patchQuestionById = patchQuestionById;
+exports.patchQuestionStatusById = patchQuestionStatusById;
 exports.deleteQuestionById = deleteQuestionById;
