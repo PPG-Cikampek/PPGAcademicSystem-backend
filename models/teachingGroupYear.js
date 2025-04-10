@@ -9,6 +9,7 @@ const teachingGroupYearSchema = new Schema({
     teachingGroupId: { type: mongoose.Types.ObjectId, required: true, ref: 'TeachingGroup', index: true },
     semesterTarget: { type: Number, required: false },
     isActive: { type: Boolean, required: true },
+    isMunaqasyahActive: { type: Boolean, required: true },
     classes: [{ type: mongoose.Types.ObjectId, required: true, ref: 'Class' }]
 });
 

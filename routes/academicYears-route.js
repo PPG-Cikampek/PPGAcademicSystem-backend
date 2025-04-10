@@ -17,6 +17,7 @@ router.post('/activate/:academicYearId', academicYearController.activateAcademic
 router.delete('/:academicYearId', academicYearController.deleteAcademicYear);
 
 router.patch('/:academicYearId', academicYearController.updateAcademicYear);
+router.patch('/start/:academicYearId/munaqasyah', academicYearController.startAcademicYearMunaqasyah);
 
 // router.post('/signup', usersController.signup);
 

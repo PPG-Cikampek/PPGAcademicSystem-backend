@@ -189,6 +189,34 @@ const updateAcademicYear = async (req, res, next) => {
     res.status(200).json({ message: 'Berhasil mengubah kelompok ajar!', academicYear: academicYear.toObject({ getters: true }) });
 }
 
+const startAcademicYearMunaqasyah = async (req, res, next) => {
+    const academicYearId = req.params.academicYearId;
+    const { isMunaqasyahActive } = req.body;
+
+    let existingAcademicYear;
+    try {
+        existingAcademicYear = await AcademicYear.findOneAndUpdate(
+            { _id: academicYearId },
+            { isMunaqasyahActive },
+            { new: true }
+        );
+
+        if (!existingAcademicYear) {
+            return next(new HttpError("Tahun Ajaran tidak ditemukan!", 404));
+        }
+
+        console.log(`Started munaqosyah for AcademicYearwith id ${academicYearId}`);
+        res.json({
+            message: "Munaqosah dimulai!",
+            question: existingAcademicYear.toObject({ getters: true })
+        });
+
+    } catch (err) {
+        console.error(err);
+        return next(new HttpError("Internal server error occurred!", 500));
+    }
+};
+
 const deleteAcademicYear = async (req, res, next) => {
     const { academicYearId } = req.body;
 
@@ -226,5 +254,6 @@ exports.createAcademicYear = createAcademicYear;
 exports.activateAcademicYear = activateAcademicYear;
 
 exports.updateAcademicYear = updateAcademicYear
+exports.startAcademicYearMunaqasyah = startAcademicYearMunaqasyah
 exports.deleteAcademicYear = deleteAcademicYear
 
