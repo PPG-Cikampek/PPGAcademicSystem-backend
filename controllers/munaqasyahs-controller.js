@@ -2,6 +2,8 @@ const HttpError = require('../models/http-error')
 const mongoose = require('mongoose');
 
 const Munaqasyah = require('../models/munaqasyah');
+const TeachingGroupYear = require('../models/teachingGroupYear');
+const Score = require('../models/score');
 
 const getClassesInfo = async (req, res, next) => {
     try {
@@ -81,10 +83,82 @@ const getMunaqasyahQuestionsByClassGrades = async (req, res, next) => {
     res.json({ questions: munaqasyahQuestions.map(x => x.toObject({ getters: true })) });
 };
 
+const getClassesByTeachingGroupYearId = async (req, res, next) => {
+    const teachingGroupYearId = req.params.teachingGroupYearId
+
+    let teachingGroupYear;
+    try {
+        teachingGroupYear = await TeachingGroupYear.findById(teachingGroupYearId)
+            .populate('classes') // Add this line to populate the classes
+    } catch (err) {
+        console.error(err);
+        return next(new HttpError("Internal server error occurred!", 500));
+    }
+
+    if (!teachingGroupYear) {
+        return next(new HttpError("Teaching group year not found!", 404));
+    }
+
+    console.log(`Get classes for munaqasyah for teachinggrupyearId of ${teachingGroupYearId}`);
+    res.json({ classes: teachingGroupYear.classes.map(x => x.toObject({ getters: true })) });
+};
+
+const getMunaqasyahQuestionsForExamination = async (req, res, next) => {
+    const { semester, classGrade, category } = req.query;
+
+    console.log(semester)
+    console.log(classGrade)
+    console.log(category)
+
+    try {
+        // Get all eligible questions matching the criteria
+        const eligibleQuestions = await Munaqasyah.find({
+            semester,
+            classGrade,
+            category,
+            status: 'active'
+        });
+
+        if (!eligibleQuestions || eligibleQuestions.length === 0) {
+            return next(new HttpError("No questions found for given criteria", 404));
+        }
+
+        // Shuffle the questions array
+        const shuffledQuestions = [...eligibleQuestions].sort(() => Math.random() - 0.5);
+
+        // Select questions that sum up to exactly 100 points
+        const selectedQuestions = [];
+        let currentSum = 0;
+
+        for (const question of shuffledQuestions) {
+            if (currentSum + question.maxScore <= 100) {
+                selectedQuestions.push(question);
+                currentSum += question.maxScore;
+            }
+            if (currentSum === 100) break;
+        }
+
+        if (currentSum !== 100) {
+            return next(new HttpError("Could not find questions that sum up to exactly 100 points", 404));
+        }
+
+        console.log(`Selected ${selectedQuestions.length} questions for examination with total score ${currentSum}`);
+        res.json({ 
+            questions: selectedQuestions.map(q => q.toObject({ getters: true })),
+            totalScore: currentSum
+        });
+
+    } catch (err) {
+        console.error(err);
+        return next(new HttpError("Internal server error occurred!", 500));
+    }
+};
+
 const createMunaqasyahQuestion = async (req, res, next) => {
     const { classGrade, type, category, semester, maxScore, scoreOptions, instruction, question, answers } = req.body
 
     const createdQuestion = new Munaqasyah({
+        status: 'inactive',
         classGrade,
         type,
         category,
@@ -173,6 +247,63 @@ const patchQuestionStatusById = async (req, res, next) => {
     }
 };
 
+const startTeachingGroupYearMunaqasyah = async (req, res, next) => {
+    const teachingGroupYearId = req.params.teachingGroupYearId;
+    const { isMunaqasyahActive } = req.body;
+
+    let existingTeachingGroupYear;
+    try {
+        existingTeachingGroupYear = await TeachingGroupYear.findById(teachingGroupYearId)
+            .populate({
+                path: 'classes',
+                populate: {
+                    path: 'students',
+                    select: 'userId nis'
+                }
+            });
+
+        if (!existingTeachingGroupYear) {
+            return next(new HttpError("Tahun Ajaran tidak ditemukan!", 404));
+        }
+
+        const scoreEntries = existingTeachingGroupYear.classes.flatMap(classObj =>
+            classObj.students.map(student => ({
+                userId: student.userId,
+                studentId: student._id,
+                studentNis: student.nis,
+                teachingGroupYearId: teachingGroupYearId,
+                classId: classObj._id,
+                reciting: { score: 0, examinerUserId: null },
+                writing: { score: 0, examinerUserId: null },
+                quranTafsir: { score: 0, examinerUserId: null },
+                hadithTafsir: { score: 0, examinerUserId: null },
+                practice: { score: 0, examinerUserId: null },
+                moralManner: { score: 0, examinerUserId: null },
+                memorizingSurah: { score: 0, examinerUserId: null },
+                memorizingHadith: { score: 0, examinerUserId: null },
+                memorizingDua: { score: 0, examinerUserId: null },
+                memorizingBeautifulName: { score: 0, examinerUserId: null },
+                knowledge: { score: 0, examinerUserId: null },
+                independence: { score: 0, examinerUserId: null }
+            }))
+        );
+
+        await Score.insertMany(scoreEntries);
+        existingTeachingGroupYear.isMunaqasyahActive = isMunaqasyahActive;
+        await existingTeachingGroupYear.save();
+
+        console.log(`Started munaqosyah for teachingGroupYear with id ${teachingGroupYearId}`);
+        res.json({
+            message: "Munaqosah dimulai dan nilai awal siswa telah dibuat!",
+            teachingGroupYear: existingTeachingGroupYear.toObject({ getters: true })
+        });
+
+    } catch (err) {
+        console.error(err);
+        return next(new HttpError("Internal server error occurred!", 500));
+    }
+};
+
 const deleteQuestionById = async (req, res, next) => {
     const questionId = req.params.questionId;
 
@@ -203,7 +334,10 @@ exports.getClassesInfo = getClassesInfo;
 exports.getMunaqasyahQuestions = getMunaqasyahQuestions;
 exports.getQuestionById = getQuestionById;
 exports.getMunaqasyahQuestionsByClassGrades = getMunaqasyahQuestionsByClassGrades;
+exports.getClassesByTeachingGroupYearId = getClassesByTeachingGroupYearId;
+exports.getMunaqasyahQuestionsForExamination = getMunaqasyahQuestionsForExamination;
 exports.createMunaqasyahQuestion = createMunaqasyahQuestion;
 exports.patchQuestionById = patchQuestionById;
 exports.patchQuestionStatusById = patchQuestionStatusById;
+exports.startTeachingGroupYearMunaqasyah = startTeachingGroupYearMunaqasyah;
 exports.deleteQuestionById = deleteQuestionById;

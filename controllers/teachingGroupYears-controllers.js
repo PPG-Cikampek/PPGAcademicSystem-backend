@@ -86,7 +86,7 @@ const getTeachingGroupYearsByTeachingGroupId = async (req, res, next) => {
     try {
         teachingGroupYears = await TeachingGroupYear.find({ teachingGroupId })
             .populate({ path: 'teachingGroupId', select: 'name' })
-            .populate({ path: 'academicYearId', select: ['name', 'isActive'] })
+            .populate({ path: 'academicYearId', select: ['name', 'isActive', 'isMunaqasyahActive'] })
             .populate({ path: 'classes' })
 
         teachingGroupYears = teachingGroupYears.sort((a, b) => {
@@ -145,6 +145,7 @@ const registerYearToTeachingGroup = async (req, res, next) => {
         academicYearId,
         teachingGroupId,
         isActive: false,
+        isMunaqasyahActive: false,
         classes: []
     })
 
