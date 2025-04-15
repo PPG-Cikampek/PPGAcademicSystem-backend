@@ -7,6 +7,7 @@ const router = express.Router();
 router.get('/', academicYearController.getAcademicYears)
 router.get('/active/', academicYearController.getActiveAcademicYear)
 router.get('/:academicYearId', academicYearController.getAcademicYearById)
+router.get('/munaqasyah/packages/', academicYearController.getMunaqasyahPackages)
 
 
 // router.get('/:userId', usersController.getUsersById);

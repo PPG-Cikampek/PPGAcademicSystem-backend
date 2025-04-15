@@ -54,6 +54,36 @@ const getAcademicYearById = async (req, res, next) => {
     res.status(200).json({ academicYear: identifiedAcademicYear.toObject({ getters: true }) });
 };
 
+const getMunaqasyahPackages = async (req, res, next) => {
+    let academicYears;
+    try {
+        academicYears = await AcademicYear.find({}, { teachingGroupYears: 0, isActive: 0 });
+
+        if (!academicYears || academicYears.length === 0) {
+            return next(new HttpError('No Academic Years found!', 404));
+        }
+
+    } catch (error) {
+        console.error(error);
+        return next(new HttpError('Internal server error occurred!', 500));
+    }
+
+    console.log('Munaqasyah Packages requested');
+    res.status(200).json({ 
+        packages: academicYears.map(year => {
+            const yearObj = year.toObject({ getters: true });
+            // Spread munaqasyah properties to root level
+            const flattenedYear = {
+                ...yearObj,
+                ...yearObj.munaqasyah
+            };
+            // Remove the now redundant munaqasyah object
+            delete flattenedYear.munaqasyah;
+            return flattenedYear;
+        })
+    });
+};
+
 const getActiveAcademicYear = async (req, res, next) => {
     let activeAcademicYear;
     try {
@@ -70,8 +100,6 @@ const getActiveAcademicYear = async (req, res, next) => {
 
     res.json({ academicYear: activeAcademicYear.toObject({ getters: true }) });
 };
-
-
 
 const createAcademicYear = async (req, res, next) => {
     const { name } = req.body;
@@ -249,6 +277,7 @@ const deleteAcademicYear = async (req, res, next) => {
 exports.getAcademicYearById = getAcademicYearById;
 exports.getAcademicYears = getAcademicYears;
 exports.getActiveAcademicYear = getActiveAcademicYear
+exports.getMunaqasyahPackages = getMunaqasyahPackages
 
 exports.createAcademicYear = createAcademicYear;
 exports.activateAcademicYear = activateAcademicYear;

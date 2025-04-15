@@ -106,10 +106,6 @@ const getClassesByTeachingGroupYearId = async (req, res, next) => {
 const getMunaqasyahQuestionsForExamination = async (req, res, next) => {
     const { semester, classGrade, category } = req.query;
 
-    console.log(semester)
-    console.log(classGrade)
-    console.log(category)
-
     try {
         // Get all eligible questions matching the criteria
         const eligibleQuestions = await Munaqasyah.find({
@@ -127,26 +123,111 @@ const getMunaqasyahQuestionsForExamination = async (req, res, next) => {
         const shuffledQuestions = [...eligibleQuestions].sort(() => Math.random() - 0.5);
 
         // Select questions that sum up to exactly 100 points
+        const targetTotalScore = 200;
         const selectedQuestions = [];
         let currentSum = 0;
 
         for (const question of shuffledQuestions) {
-            if (currentSum + question.maxScore <= 100) {
+            if (currentSum + question.maxScore <= targetTotalScore) {
                 selectedQuestions.push(question);
                 currentSum += question.maxScore;
             }
-            if (currentSum === 100) break;
+            if (currentSum === targetTotalScore) break;
         }
 
-        if (currentSum !== 100) {
-            return next(new HttpError("Could not find questions that sum up to exactly 100 points", 404));
+        if (currentSum !== targetTotalScore) {
+            return next(new HttpError(`Could not find questions that sum up to exactly ${targetTotalScore} points`, 404));
         }
 
         console.log(`Selected ${selectedQuestions.length} questions for examination with total score ${currentSum}`);
-        res.json({ 
-            questions: selectedQuestions.map(q => q.toObject({ getters: true })),
+
+        // Map and remove redundant fields from each question
+        const formattedQuestions = selectedQuestions.map(q => {
+            const questionObj = q.toObject({ getters: true });
+            delete questionObj.classGrade;
+            delete questionObj.semester;
+            delete questionObj.category;
+            return questionObj;
+        });
+
+        res.json({
+            semester,
+            classGrade,
+            category,
+            questions: formattedQuestions,
             totalScore: currentSum
         });
+
+    } catch (err) {
+        console.error(err);
+        return next(new HttpError("Internal server error occurred!", 500));
+    }
+};
+
+const getMunaqasyahQuestionsForExaminationByCategory = async (req, res, next) => {
+    const { semester, category, seed = Date.now() } = req.query;
+
+    const seededRandom = (seed) => {
+        const x = Math.sin(seed++) * 10000;
+        return x - Math.floor(x);
+    };
+
+    try {
+        const grades = ['paud', 'pra-paud', '1', '2', '3', '4', '5', '6'];
+        const result = {
+            semester,
+            category,
+            seed: Number(seed),
+            classes: []
+        };
+
+        let currentSeed = Number(seed);
+
+        for (const classGrade of grades) {
+            const eligibleQuestions = await Munaqasyah.find({
+                semester,
+                classGrade,
+                category,
+            });
+
+            if (eligibleQuestions.length > 0) {
+                const shuffledQuestions = [...eligibleQuestions].sort(() => seededRandom(currentSeed++) - 0.5);
+
+                const targetTotalScore = 100;
+                const selectedQuestions = [];
+                let currentSum = 0;
+
+                for (const question of shuffledQuestions) {
+                    if (currentSum + question.maxScore <= targetTotalScore) {
+                        selectedQuestions.push(question);
+                        currentSum += question.maxScore;
+                    }
+                    if (currentSum === targetTotalScore) break;
+                }
+
+                if (currentSum === targetTotalScore) {
+                    const formattedQuestions = selectedQuestions.map(q => {
+                        const questionObj = q.toObject({ getters: true });
+                        delete questionObj.classGrade;
+                        delete questionObj.semester;
+                        delete questionObj.category;
+                        return questionObj;
+                    });
+
+                    result.classes.push({
+                        classGrade,
+                        totalScore: currentSum,
+                        questions: formattedQuestions
+                    });
+                }
+            }
+        }
+
+        if (result.classes.length === 0) {
+            return next(new HttpError("No questions found for given criteria", 404));
+        }
+
+        res.json(result);
 
     } catch (err) {
         console.error(err);
@@ -336,6 +417,7 @@ exports.getQuestionById = getQuestionById;
 exports.getMunaqasyahQuestionsByClassGrades = getMunaqasyahQuestionsByClassGrades;
 exports.getClassesByTeachingGroupYearId = getClassesByTeachingGroupYearId;
 exports.getMunaqasyahQuestionsForExamination = getMunaqasyahQuestionsForExamination;
+exports.getMunaqasyahQuestionsForExaminationByCategory = getMunaqasyahQuestionsForExaminationByCategory;
 exports.createMunaqasyahQuestion = createMunaqasyahQuestion;
 exports.patchQuestionById = patchQuestionById;
 exports.patchQuestionStatusById = patchQuestionStatusById;

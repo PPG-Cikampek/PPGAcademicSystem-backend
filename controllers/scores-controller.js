@@ -66,7 +66,6 @@ const getScoreById = async (req, res, next) => {
 
 const getClassesByTeachingGroupYearId = async (req, res, next) => {
     const teachingGroupYearId = req.params.teachingGroupYearId;
-    console.log(teachingGroupYearId);
 
     let classes;
     try {

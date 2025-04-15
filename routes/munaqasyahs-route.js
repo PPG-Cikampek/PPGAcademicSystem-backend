@@ -14,6 +14,7 @@ router.get('/questions/class/:classGrade', munaqasyahController.getMunaqasyahQue
 router.get('/classes/:teachingGroupYearId', munaqasyahController.getClassesByTeachingGroupYearId);
 
 router.get('/examination/questions', munaqasyahController.getMunaqasyahQuestionsForExamination);
+router.get('/examination/questions/package', munaqasyahController.getMunaqasyahQuestionsForExaminationByCategory);
 
 // router.get('/:userId', usersController.getUsersById);
 
