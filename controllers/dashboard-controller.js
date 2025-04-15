@@ -50,7 +50,7 @@ const getDashboardData = async (req, res, next) => {
 
         }
 
-        if (userRole === 'admin') {
+        if (userRole === 'admin' || userRole === 'curriculum') {
             const branchCount = await Branch.countDocuments()
             const teachingGroupCount = await TeachingGroup.countDocuments()
             const classCount = await Class.countDocuments()
