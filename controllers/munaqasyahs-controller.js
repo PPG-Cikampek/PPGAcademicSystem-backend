@@ -173,7 +173,7 @@ const getMunaqasyahQuestionsForExaminationByCategory = async (req, res, next) =>
     };
 
     try {
-        const grades = ['paud', 'pra-paud', '1', '2', '3', '4', '5', '6'];
+        const categories = ['paud', 'pra-paud', '1', '2', '3', '4', '5', '6'];
         const result = {
             semester,
             category,
@@ -183,7 +183,7 @@ const getMunaqasyahQuestionsForExaminationByCategory = async (req, res, next) =>
 
         let currentSeed = Number(seed);
 
-        for (const classGrade of grades) {
+        for (const classGrade of categories) {
             const eligibleQuestions = await Munaqasyah.find({
                 semester,
                 classGrade,
@@ -193,7 +193,7 @@ const getMunaqasyahQuestionsForExaminationByCategory = async (req, res, next) =>
             if (eligibleQuestions.length > 0) {
                 const shuffledQuestions = [...eligibleQuestions].sort(() => seededRandom(currentSeed++) - 0.5);
 
-                const targetTotalScore = 100;
+                const targetTotalScore = 300;
                 const selectedQuestions = [];
                 let currentSum = 0;
 

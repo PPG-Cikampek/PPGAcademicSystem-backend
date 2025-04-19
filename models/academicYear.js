@@ -7,14 +7,18 @@ const academicYearSchema = new Schema({
     isActive: { type: Boolean, required: true },
     isMunaqasyahActive: { type: Boolean, required: true },
     munaqasyah: {
-        gradePraPaudSeed: { type: Number, required: true },
-        gradePaudSeed: { type: Number, required: true },
-        grade1Seed: { type: Number, required: true },
-        grade2Seed: { type: Number, required: true },
-        grade3Seed: { type: Number, required: true },
-        grade4Seed: { type: Number, required: true },
-        grade5Seed: { type: Number, required: true },
-        grade6Seed: { type: Number, required: true }
+        reciting: { type: Number, required: false },
+        writing: { type: Number, required: false },
+        quranTafsir: { type: Number, required: false },
+        hadithTafsir: { type: Number, required: false },
+        practice: { type: Number, required: false },
+        moralManner: { type: Number, required: false },
+        memorizingSurah: { type: Number, required: false },
+        memorizingHadith: { type: Number, required: false },
+        memorizingDua: { type: Number, required: false },
+        memorizingBeautifulName: { type: Number, required: false },
+        knowledge: { type: Number, required: false },
+        independence: { type: Number, required: false }
     },
     teachingGroupYears: [{ type: mongoose.Types.ObjectId, required: true, ref: 'TeachingGroupYear' }]
 });
