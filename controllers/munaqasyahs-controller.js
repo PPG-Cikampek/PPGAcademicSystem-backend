@@ -112,7 +112,7 @@ const getMunaqasyahQuestionsForExamination = async (req, res, next) => {
             semester,
             classGrade,
             category,
-            status: 'active'
+            // status: 'active'
         });
 
         if (!eligibleQuestions || eligibleQuestions.length === 0) {
@@ -123,7 +123,7 @@ const getMunaqasyahQuestionsForExamination = async (req, res, next) => {
         const shuffledQuestions = [...eligibleQuestions].sort(() => Math.random() - 0.5);
 
         // Select questions that sum up to exactly 100 points
-        const targetTotalScore = 200;
+        const targetTotalScore = 40;
         const selectedQuestions = [];
         let currentSum = 0;
 
@@ -236,12 +236,13 @@ const getMunaqasyahQuestionsForExaminationByCategory = async (req, res, next) =>
 };
 
 const createMunaqasyahQuestion = async (req, res, next) => {
-    const { classGrade, type, category, semester, maxScore, scoreOptions, instruction, question, answers } = req.body
+    const { classGrade, type, category, semester, curriculumMonth, maxScore, scoreOptions, instruction, question, answers } = req.body
 
     const createdQuestion = new Munaqasyah({
         status: 'inactive',
         classGrade,
         type,
+        curriculumMonth,
         category,
         semester,
         maxScore,
@@ -265,7 +266,7 @@ const createMunaqasyahQuestion = async (req, res, next) => {
 
 const patchQuestionById = async (req, res, next) => {
     const questionId = req.params.questionId;
-    const { classGrade, type, category, semester, maxScore, scoreOptions, instruction, question, answers } = req.body;
+    const { classGrade, type, category, semester, curriculumMonth, maxScore, scoreOptions, instruction, question, answers } = req.body;
 
     let existingQuestion;
     try {
@@ -283,6 +284,7 @@ const patchQuestionById = async (req, res, next) => {
     existingQuestion.type = type || existingQuestion.type;
     existingQuestion.category = category || existingQuestion.category;
     existingQuestion.semester = semester || existingQuestion.semester;
+    existingQuestion.curriculumMonth = curriculumMonth || existingQuestion.curriculumMonth;
     existingQuestion.maxScore = maxScore || existingQuestion.maxScore;
     existingQuestion.scoreOptions = scoreOptions || existingQuestion.scoreOptions;
     existingQuestion.instruction = instruction || existingQuestion.instruction;
