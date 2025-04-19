@@ -8,6 +8,7 @@ const munaqasyahSchema = new Schema({
     type: { type: String, required: true },
     category: { type: String, required: true },
     semester: { type: String, required: true },
+    curriculumMonth: { type: Number, required: true },
     maxScore: { type: Number, required: true },
     scoreOptions: { type: [Number], required: false },
     instruction: { type: String, required: false },
