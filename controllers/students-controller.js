@@ -1,5 +1,6 @@
 const HttpError = require('../models/http-error')
 const mongoose = require('mongoose');
+const sharp = require('sharp'); // Add at the top
 
 const Student = require('../models/student');
 const User = require('../models/user');
@@ -224,6 +225,12 @@ const updateStudent = async (req, res, next) => {
         if (req.file) {
             updateData.image = req.file.path.replace(/\\/g, '/');
             updateData.originalImagePath = req.file.path;
+            // Generate thumbnail
+            const thumbnailBuffer = await sharp(req.file.path)
+                .resize(80, 80, { fit: 'cover' })
+                .jpeg({ quality: 40 })
+                .toBuffer();
+            updateData.thumbnail = `data:image/jpeg;base64,${thumbnailBuffer.toString('base64')}`;
         }
 
         student = await Student.findByIdAndUpdate(
@@ -232,11 +239,13 @@ const updateStudent = async (req, res, next) => {
             { new: true, runValidators: true }
         );
 
-
         if (student) {
+            const userUpdate = { name: student.name };
+            if (req?.file?.path) userUpdate.image = req.file.path;
+            if (updateData.thumbnail) userUpdate.thumbnail = updateData.thumbnail;
             await User.findByIdAndUpdate(
                 student.userId,
-                { image: req?.file?.path, name: student.name },
+                userUpdate,
                 { new: true, runValidators: true }
             );
         }

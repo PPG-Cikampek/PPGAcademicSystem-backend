@@ -18,6 +18,7 @@ const userSchema = new Schema({
     password: { type: String, required: true, minlength: [8, 'Password must be at least 8 characters'] },
     role: { type: String, required: true },
     image: { type: String, required: false },
+    thumbnail: { type: String, required: false },
     teachingGroupId: { type: mongoose.Types.ObjectId, required: false, ref: 'TeachingGroup' },
     resetToken: { type: String },
     resetTokenExpiration: { type: Date }

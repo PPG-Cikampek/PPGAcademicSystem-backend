@@ -12,6 +12,7 @@ const teacherSchema = new Schema({
     gender: { type: String, required: false },
     address: { type: String, required: false },
     image: { type: String, required: false }, 
+    thumbnail: { type: String, required: false },
     originalImagePath: { type: String, required: false },
     positionStartDate: { type: Date, required: false },
     positionEndDate: { type: Date, required: false },
