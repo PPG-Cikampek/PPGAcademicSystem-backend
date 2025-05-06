@@ -7,7 +7,6 @@ const jwt = require('jsonwebtoken')
 const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 const { v1: uuidv1 } = require('uuid')
-const sharp = require('sharp'); // Add at the top
 
 const User = require('../models/user');
 const Branch = require('../models/branch')
@@ -748,18 +747,16 @@ const verifyEmail = async (req, res, next) => {
 
 const updateProfileImage = async (req, res, next) => {
     const userId = req.params.userId;
+    const { thumbnail } = req.body;
     let user;
     try {
         if (req.file) {
             const updateData = {};
             updateData.image = req.file.path.replace(/\\/g, '/');
             updateData.originalImagePath = req.file.path;
-            // Generate thumbnail
-            const thumbnailBuffer = await sharp(req.file.path)
-                .resize(80, 80, { fit: 'cover' })
-                .jpeg({ quality: 40 })
-                .toBuffer();
-            updateData.thumbnail = `data:image/jpeg;base64,${thumbnailBuffer.toString('base64')}`;
+            if (thumbnail) {
+                updateData.thumbnail = thumbnail;
+            }
 
             user = await User.findByIdAndUpdate(
                 userId,
@@ -770,13 +767,13 @@ const updateProfileImage = async (req, res, next) => {
             if (user.role === 'teacher') {
                 await Teacher.findOneAndUpdate(
                     { userId: user._id },
-                    { image: updateData.image, originalImagePath: updateData.originalImagePath, thumbnail: updateData.thumbnail },
+                    { image: updateData.image, originalImagePath: updateData.originalImagePath, ...(thumbnail && { thumbnail }) },
                     { new: true, runValidators: true }
                 );
             } else if (user.role === 'student') {
                 await Student.findOneAndUpdate(
                     { userId: user._id },
-                    { image: updateData.image, originalImagePath: updateData.originalImagePath, thumbnail: updateData.thumbnail },
+                    { image: updateData.image, originalImagePath: updateData.originalImagePath, ...(thumbnail && { thumbnail }) },
                     { new: true, runValidators: true }
                 );
             }

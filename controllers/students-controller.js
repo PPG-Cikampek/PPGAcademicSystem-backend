@@ -1,6 +1,5 @@
 const HttpError = require('../models/http-error')
 const mongoose = require('mongoose');
-const sharp = require('sharp'); // Add at the top
 
 const Student = require('../models/student');
 const User = require('../models/user');
@@ -216,7 +215,7 @@ const createStudent = async (req, res, next) => {
 }
 
 const updateStudent = async (req, res, next) => {
-    const { nis, name, dateOfBirth, gender, parentName, address } = req.body;
+    const { nis, name, dateOfBirth, gender, parentName, address, thumbnail } = req.body;
     const studentId = req.params.studentId;
 
     let student;
@@ -225,12 +224,9 @@ const updateStudent = async (req, res, next) => {
         if (req.file) {
             updateData.image = req.file.path.replace(/\\/g, '/');
             updateData.originalImagePath = req.file.path;
-            // Generate thumbnail
-            const thumbnailBuffer = await sharp(req.file.path)
-                .resize(80, 80, { fit: 'cover' })
-                .jpeg({ quality: 40 })
-                .toBuffer();
-            updateData.thumbnail = `data:image/jpeg;base64,${thumbnailBuffer.toString('base64')}`;
+        }
+        if (thumbnail) {
+            updateData.thumbnail = thumbnail;
         }
 
         student = await Student.findByIdAndUpdate(
@@ -242,7 +238,7 @@ const updateStudent = async (req, res, next) => {
         if (student) {
             const userUpdate = { name: student.name };
             if (req?.file?.path) userUpdate.image = req.file.path;
-            if (updateData.thumbnail) userUpdate.thumbnail = updateData.thumbnail;
+            if (thumbnail) userUpdate.thumbnail = thumbnail;
             await User.findByIdAndUpdate(
                 student.userId,
                 userUpdate,
@@ -261,7 +257,7 @@ const updateStudent = async (req, res, next) => {
     }
 
     console.log(`Student with nis '${student.nis}' updated!`)
-    res.status(200).json({ message: 'Berhasil melengkapi profile siswa!', student: student.toObject({ getters: true }) });
+    res.status(200).json({ message: 'Berhasil melengkapi profile siswa!', student: student.toObject({ getters: true }) })
 
 }
 
