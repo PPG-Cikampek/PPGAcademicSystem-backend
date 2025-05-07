@@ -213,29 +213,37 @@ const bulkCreateUsersAndStudents = async (req, res, next) => {
         return next(new HttpError('TeachingGroup not found!', 404));
     }
 
-    // Find all existing NIS for the current year and identify gaps
+    // Restrict NIS logic to only 4 digits: 0010 - 9999
     let nisNumbers = [];
     try {
-        const students = await Student.find({ nis: new RegExp(`^${currentYear}`) }, { nis: 1, _id: 0 });
-        nisNumbers = students.map(s => parseInt(s.nis.slice(4))).sort((a, b) => a - b);
+        const students = await Student.find({
+            nis: new RegExp(`^${currentYear}(\\d{4})$`)
+        }, { nis: 1, _id: 0 });
+        nisNumbers = students
+            .map(s => parseInt(s.nis.slice(4)))
+            .filter(n => n >= 10 && n <= 9999)
+            .sort((a, b) => a - b);
     } catch (err) {
         console.error(err);
         return next(new HttpError('Failed to retrieve NIS list!', 500));
     }
 
-    // Find available NIS slots (gaps)
+    // Find available NIS slots (gaps) in 0010-9999
     const availableNis = [];
-    let expected = 1;
-    for (let i = 0; i < nisNumbers.length; i++) {
-        while (expected < nisNumbers[i]) {
-            availableNis.push(expected);
+    let expected = 10;
+    let nisIdx = 0;
+    while (availableNis.length < count && expected <= 9999) {
+        if (nisIdx < nisNumbers.length && nisNumbers[nisIdx] === expected) {
+            nisIdx++;
             expected++;
+            continue;
         }
-        expected = nisNumbers[i] + 1;
+        availableNis.push(expected);
+        expected++;
     }
-    // Fill up to count: use gaps first, then continue sequentially
-    while (availableNis.length < count) {
-        availableNis.push(expected++);
+
+    if (availableNis.length < count) {
+        return next(new HttpError('Tidak cukup slot NIS tersedia dalam rentang 0010-9999 untuk tahun ini.', 400));
     }
 
     const users = [];
@@ -243,7 +251,7 @@ const bulkCreateUsersAndStudents = async (req, res, next) => {
 
     for (let i = 0; i < count; i++) {
         const nisNum = availableNis[i];
-        const nis = `${currentYear}${nisNum.toString().padStart(4, '0')}`; // e.g., 20240001
+        const nis = `${currentYear}${nisNum.toString().padStart(4, '0')}`; // e.g., 20240010
 
         const userEmail = `siswa${nis}@gmail.com`; // Unique email for each student
 
