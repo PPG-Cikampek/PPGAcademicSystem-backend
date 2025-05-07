@@ -199,6 +199,7 @@ const createStudent = async (req, res, next) => {
         parentName: "",
         address: "",
         image: "",
+        thumbnail: "",
         attendanceIds: [],
         classIds: []
     });

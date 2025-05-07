@@ -18,7 +18,7 @@ const getScore = async (req, res, next) => {
     let scores;
     try {
         scores = await Score.find(filter)
-            .populate({ path: 'studentId', select: ['name', 'nis', 'image'] })
+            .populate({ path: 'studentId', select: ['name', 'nis', 'image', 'thumbnail'] })
             .populate({ path: 'classId', select: 'name' })
             .populate({
                 path: 'teachingGroupYearId',

@@ -195,7 +195,7 @@ const getAttendancesByDateAndClass = async (req, res, next) => {
             forDate: formattedDate,
             classId
         })
-            .populate({ path: 'studentId', select: ['name', 'nis', 'image'] });
+            .populate({ path: 'studentId', select: ['name', 'nis', 'image', 'thumbnail'] });
         ;
 
         if (!attendances) {
@@ -398,7 +398,7 @@ const getAttendanceReports = async (req, res, next) => {
             .populate({
                 path: 'classes',
                 populate: [
-                    { path: 'attendances', populate: { path: 'studentId', select: ['name', 'nis', 'image'] } },
+                    { path: 'attendances', populate: { path: 'studentId', select: ['name', 'nis', 'image', 'thumbnail'] } },
                     { path: 'teachers', select: ['name', 'nig'] }
                 ]
             })
