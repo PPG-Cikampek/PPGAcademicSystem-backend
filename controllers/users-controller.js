@@ -213,20 +213,37 @@ const bulkCreateUsersAndStudents = async (req, res, next) => {
         return next(new HttpError('TeachingGroup not found!', 404));
     }
 
-    let nisStart;
+    // Find all existing NIS for the current year and identify gaps
+    let nisNumbers = [];
     try {
-        const lastStudent = await Student.findOne({ nis: new RegExp(`^${currentYear}`) }).sort({ nis: -1 });
-        nisStart = lastStudent ? parseInt(lastStudent.nis.slice(4)) + 1 : 1;
+        const students = await Student.find({ nis: new RegExp(`^${currentYear}`) }, { nis: 1, _id: 0 });
+        nisNumbers = students.map(s => parseInt(s.nis.slice(4))).sort((a, b) => a - b);
     } catch (err) {
         console.error(err);
-        return next(new HttpError('Failed to retrieve last NIS!', 500));
+        return next(new HttpError('Failed to retrieve NIS list!', 500));
+    }
+
+    // Find available NIS slots (gaps)
+    const availableNis = [];
+    let expected = 1;
+    for (let i = 0; i < nisNumbers.length; i++) {
+        while (expected < nisNumbers[i]) {
+            availableNis.push(expected);
+            expected++;
+        }
+        expected = nisNumbers[i] + 1;
+    }
+    // Fill up to count: use gaps first, then continue sequentially
+    while (availableNis.length < count) {
+        availableNis.push(expected++);
     }
 
     const users = [];
     const students = [];
 
     for (let i = 0; i < count; i++) {
-        const nis = `${currentYear}${(nisStart + i).toString().padStart(4, '0')}`; // e.g., 20240001
+        const nisNum = availableNis[i];
+        const nis = `${currentYear}${nisNum.toString().padStart(4, '0')}`; // e.g., 20240001
 
         const userEmail = `siswa${nis}@gmail.com`; // Unique email for each student
 
