@@ -123,7 +123,7 @@ const getMunaqasyahQuestionsForExamination = async (req, res, next) => {
         const shuffledQuestions = [...eligibleQuestions].sort(() => Math.random() - 0.5);
 
         // Select questions that sum up to exactly 100 points
-        const targetTotalScore = 40;
+        const targetTotalScore = 100;
         const selectedQuestions = [];
         let currentSum = 0;
 
@@ -193,7 +193,7 @@ const getMunaqasyahQuestionsForExaminationByCategory = async (req, res, next) =>
             if (eligibleQuestions.length > 0) {
                 const shuffledQuestions = [...eligibleQuestions].sort(() => seededRandom(currentSeed++) - 0.5);
 
-                const targetTotalScore = 300;
+                const targetTotalScore = 100;
                 const selectedQuestions = [];
                 let currentSum = 0;
 
