@@ -105,14 +105,14 @@ const getClassesByTeachingGroupYearId = async (req, res, next) => {
 
 const getMunaqasyahQuestionsForExamination = async (req, res, next) => {
     const { semester, classGrade, category } = req.query;
-
+    console.log(semester, classGrade, category)
     try {
         // Get all eligible questions matching the criteria
         const eligibleQuestions = await Munaqasyah.find({
-            semester,
-            classGrade,
-            category,
-            // status: 'active'
+            semester: semester,
+            classGrade: classGrade.toLowerCase(),
+            category: category,
+            status: 'active'
         });
 
         if (!eligibleQuestions || eligibleQuestions.length === 0) {
