@@ -123,6 +123,7 @@ const createAcademicYear = async (req, res, next) => {
     const createdAcademicYear = new AcademicYear({
         name,
         isActive: false,
+        isMunaqasyahActive: false,
         teachingGroupYears: []
     })
 
