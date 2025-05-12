@@ -4,15 +4,11 @@ const mongoose = require('mongoose');
 const User = require('../models/user');
 const Branch = require('../models/branch');
 const TeachingGroup = require('../models/teachingGroup');
-const AcademicYear = require('../models/academicYear')
 const Class = require('../models/class')
 const TeachingGroupYear = require('../models/teachingGroupYear')
 const Student = require('../models/student')
 const Teacher = require('../models/teacher')
 const Attendance = require('../models/attendance');
-const attendance = require('../models/attendance');
-const teachingGroupYear = require('../models/teachingGroupYear');
-const user = require('../models/user');
 
 
 const getDashboardData = async (req, res, next) => {
@@ -24,22 +20,36 @@ const getDashboardData = async (req, res, next) => {
         let dashboardData = {}
 
         if (userRole === 'teachingGroupAdmin') {
-            const user = User.find(userId)
+            const user = await User.findById(userId)
 
             const teachingGroupYears = await TeachingGroupYear.find({ teachingGroupId: user.teachingGroupId }).select('_id');
             const teachingGroupYearIds = teachingGroupYears.map(tgy => tgy._id);
 
             const classCount = await Class.countDocuments({ teachingGroupYearId: { $in: teachingGroupYearIds } });
 
-            // const classCount = await Class.countDocuments({ 'teachingGroupYearId.teachingGroupId': user.teachingGroupId })
-            const studentCount = await Student.countDocuments({ 'userId.teachingGroupId': user.teachingGroupId })
-            const teacherCount = await Teacher.countDocuments({ 'userId.teachingGroupId': user.teachingGroupId })
-            const attendanceCount = await Attendance.countDocuments({ 'studentId.userId.teachingGroupId': user.teachingGroupId })
+            // Find all users (students) in this teaching group
+            const studentUsers = await User.find({ teachingGroupId: user.teachingGroupId }).select('_id');
+            const studentUserIds = studentUsers.map(u => u._id);
 
-            const attendancePresentCount = await Attendance.countDocuments({ status: { $in: ['Hadir', 'Terlambat'] } })
+            // Count students whose userId is in studentUserIds
+            const studentCount = await Student.countDocuments({ userId: { $in: studentUserIds } });
 
-            const attendancePercentage = attendancePresentCount / attendanceCount * 100
+            // Count teachers whose userId is in studentUserIds (assuming teachers are also users in the same group)
+            const teacherCount = await Teacher.countDocuments({ userId: { $in: studentUserIds } });
 
+            // Find all students in this group to get their _ids
+            const students = await Student.find({ userId: { $in: studentUserIds } }).select('_id');
+            const studentIds = students.map(s => s._id);
+
+            // Count attendance for students in this group
+            const attendanceCount = await Attendance.countDocuments({ studentId: { $in: studentIds } });
+
+            const attendancePresentCount = await Attendance.countDocuments({ 
+                studentId: { $in: studentIds }, 
+                status: { $in: ['Hadir', 'Terlambat'] } 
+            });
+
+            const attendancePercentage = attendanceCount === 0 ? 0 : (attendancePresentCount / attendanceCount * 100);
 
             dashboardData = {
                 "Kelas": classCount,
@@ -48,6 +58,7 @@ const getDashboardData = async (req, res, next) => {
                 "Kehadiran": attendancePercentage
             }
 
+            console.log(dashboardData)
         }
 
         if (userRole === 'admin' || userRole === 'curriculum') {
