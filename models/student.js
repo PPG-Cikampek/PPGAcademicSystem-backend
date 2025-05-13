@@ -9,6 +9,7 @@ const studentSchema = new Schema({
     dateOfBirth: { type: Date, required: false },
     gender: { type: String, required: false },
     parentName: { type: String, required: false },
+    parentPhone: { type: String, required: false },
     address: { type: String, required: false },
     image: { type: String, required: false },
     thumbnail: { type: String, required: false },

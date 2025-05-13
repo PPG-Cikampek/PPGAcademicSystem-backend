@@ -197,6 +197,7 @@ const createStudent = async (req, res, next) => {
         dateOfBirth: "",
         gender: "",
         parentName: "",
+        parentPhone: "",
         address: "",
         image: "",
         thumbnail: "",
@@ -216,12 +217,12 @@ const createStudent = async (req, res, next) => {
 }
 
 const updateStudent = async (req, res, next) => {
-    const { nis, name, dateOfBirth, gender, parentName, address, thumbnail } = req.body;
+    const { nis, name, dateOfBirth, gender, parentName, parentPhone, address, thumbnail } = req.body;
     const studentId = req.params.studentId;
 
     let student;
     try {
-        const updateData = { ...(nis && { nis }), name, dateOfBirth, gender, address, parentName, isProfileComplete: true };
+        const updateData = { ...(nis && { nis }), name, dateOfBirth, gender, address, parentName, parentPhone, isProfileComplete: true };
         if (req.file) {
             updateData.image = req.file.path.replace(/\\/g, '/');
             updateData.originalImagePath = req.file.path;
