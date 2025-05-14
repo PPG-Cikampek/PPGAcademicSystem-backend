@@ -11,22 +11,64 @@ const Student = require('../models/student')
 const Teacher = require('../models/teacher')
 
 const getClasses = async (req, res, next) => {
-
     let classes;
-
     try {
         classes = await Class.find()
             .populate([
-                { path: 'teachingGroupYearId', populate: { path: 'teachingGroupId', select: 'name' }, populate: { path: 'academicYearId' } },
-                { path: 'attendances', select: 'forDate' }
+                {
+                    path: 'teachingGroupYearId',
+                    select: [
+                        'academicYearId',
+                        'teachingGroupId',
+                    ],
+                    populate: [
+                        {
+                            path: 'teachingGroupId',
+                            select: 'name'
+                        },
+                        {
+                            path: 'academicYearId',
+                            select: 'name'
+                        }
+                    ]
+                },
+                { path: 'attendances', select: 'forDate' },
+                { path: 'teachers', select: '_id' },
+                { path: 'students', select: '_id' }
             ])
     } catch (err) {
         console.error(err);
         return next(new HttpError("Internal server error occurred!", 500));
     }
 
+    // Reorganize data as requested
+    const grouped = {};
+    for (const cls of classes) {
+        const teachingGroupYear = cls.teachingGroupYearId;
+        if (!teachingGroupYear || !teachingGroupYear.academicYearId) continue;
+        const academicYearId = teachingGroupYear.academicYearId._id ? teachingGroupYear.academicYearId._id.toString() : teachingGroupYear.academicYearId.toString();
+        const academicYearName = teachingGroupYear.academicYearId.name || '';
+        if (!grouped[academicYearId]) {
+            grouped[academicYearId] = {
+                academicYearId,
+                academicYearName,
+                classes: []
+            };
+        }
+        grouped[academicYearId].classes.push({
+            _id: cls._id,
+            name: cls.name,
+            startTime: cls.startTime,
+            isLocked: cls.isLocked,
+            teachingGroupId: teachingGroupYear.teachingGroupId && teachingGroupYear.teachingGroupId.name ? teachingGroupYear.teachingGroupId.name : '',
+            teachers: Array.isArray(cls.teachers) ? cls.teachers.length : 0,
+            students: Array.isArray(cls.students) ? cls.students.length : 0,
+            attendances: Array.isArray(cls.attendances) ? cls.attendances.length : 0
+        });
+    }
+    const result = Object.values(grouped);
     console.log('Get classes requested');
-    res.json({ classes: classes.map(x => x.toObject({ getters: true })) });
+    res.json({ academicYears: result });
 }
 
 const getClassById = async (req, res, next) => {
