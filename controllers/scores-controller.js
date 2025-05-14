@@ -18,7 +18,7 @@ const getScore = async (req, res, next) => {
     let scores;
     try {
         scores = await Score.find(filter)
-            .populate({ path: 'studentId', select: ['name', 'nis', 'image', 'thumbnail'] })
+            .populate({ path: 'studentId', select: ['name', 'nis', 'thumbnail'] })
             .populate({ path: 'classId', select: 'name' })
             .populate({
                 path: 'teachingGroupYearId',
@@ -28,6 +28,18 @@ const getScore = async (req, res, next) => {
                     select: 'name'
                 }
             })
+            .populate('reciting.examinerUserId', 'name')
+            .populate('writing.examinerUserId', 'name')
+            .populate('quranTafsir.examinerUserId', 'name')
+            .populate('hadithTafsir.examinerUserId', 'name')
+            .populate('practice.examinerUserId', 'name')
+            .populate('moralManner.examinerUserId', 'name')
+            .populate('memorizingSurah.examinerUserId', 'name')
+            .populate('memorizingHadith.examinerUserId', 'name')
+            .populate('memorizingDua.examinerUserId', 'name')
+            .populate('memorizingBeautifulName.examinerUserId', 'name')
+            .populate('knowledge.examinerUserId', 'name')
+            .populate('independence.examinerUserId', 'name');
 
         if (!scores || scores.length === 0) {
             return res.status(200).json({ scores: [] });
