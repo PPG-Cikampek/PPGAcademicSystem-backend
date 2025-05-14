@@ -5,6 +5,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 require('dotenv').config(); // Load environment variables
 
+const logRequest = require('./middlewares/log-request');
 const usersRoutes = require('./routes/users-route');
 const levelsRoutes = require('./routes/levels-route');
 const academicYearsRoutes = require('./routes/academicYears-route');
@@ -35,13 +36,8 @@ app.use(express.urlencoded({ extended: true })); // Parses URL-encoded data
 // Serve static files for images
 app.use('/api/uploads/images', express.static(path.join(__dirname, 'uploads', 'images')));
 
-// Logging middleware to check request paths
-app.use((req, res, next) => {
-    console.log(`Request URL: ${req.url}`);
-    setTimeout(() => {
-        next();
-    }, 0); // Simulate server load with a 1-second delay
-});
+// Logging middleware to log every request
+app.use(logRequest); // Log every request
 
 // CORS handling
 app.use((req, res, next) => {
