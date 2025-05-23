@@ -392,15 +392,15 @@ const createUser = async (req, res, next) => {
     });
 
     let teacher;
-    if (role === 'teacher') {
-        const { nig } = teacherDetails;
+    if (role === 'teacher' || role === 'munaqisy') {
+        const { nig, position } = teacherDetails;
         console.log(nig)
         teacher = new Teacher({
             userId: newUser._id, // Reference to the new user's ID
             name,
             nig,
             phone: "",
-            position: "",
+            position,
             dateOfBirth: "",
             gender: "",
             address: "",
