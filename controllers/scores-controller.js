@@ -78,6 +78,9 @@ const getScoreById = async (req, res, next) => {
 
 const getClassesByTeachingGroupYearId = async (req, res, next) => {
     const teachingGroupYearId = req.params.teachingGroupYearId;
+    const classId = req.query.classId;
+    
+    console.log(teachingGroupYearId, classId);
 
     let classes;
     try {
