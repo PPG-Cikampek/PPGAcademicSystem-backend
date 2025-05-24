@@ -185,7 +185,9 @@ const login = async (req, res, next) => {
 };
 
 const bulkCreateUsersAndStudents = async (req, res, next) => {
-    const { year, count, teachingGroupName, role } = req.body;
+    const { year, count, teachingGroupId, role } = req.body;
+
+    console.log(req.body)
 
     if (req.userData.userRole !== 'admin') {
         return next(new HttpError('Unauthorized', 401));
@@ -204,7 +206,7 @@ const bulkCreateUsersAndStudents = async (req, res, next) => {
 
     let teachingGroup;
     try {
-        teachingGroup = await TeachingGroup.findOne({ name: teachingGroupName });
+        teachingGroup = await TeachingGroup.findById(teachingGroupId);
     } catch (err) {
         return next(new HttpError('TeachingGroup lookup failed!', 500));
     }
@@ -341,7 +343,7 @@ const requestAccounts = async (req, res, next) => {
 
 
 const createUser = async (req, res, next) => {
-    const { name, email, password, role, teachingGroupName, teacherDetails } = req.body;
+    const { name, email, password, role, teachingGroupId, teacherDetails } = req.body;
 
     if (req.userData.userRole !== 'admin') {
         return next(new HttpError('Unauthorized', 401));
@@ -362,7 +364,7 @@ const createUser = async (req, res, next) => {
 
     let teachingGroup;
     try {
-        teachingGroup = await TeachingGroup.findOne({ name: teachingGroupName });
+        teachingGroup = await TeachingGroup.findById(teachingGroupId);
     } catch (err) {
         console.log("ada EERRORR")
         console.log(err)

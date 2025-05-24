@@ -19,7 +19,7 @@ const getTeachingGroupYears = async (req, res, next) => {
         } else if (populate === 'teachingGroupId') {
             teachingGroupYears = await TeachingGroupYear.find()
                 .populate({ path: 'teachingGroupId', select: 'name' })
-                .populate({ path: 'academicYearId', select: 'name' });
+                .populate({ path: 'academicYearId', select: 'name' })
 
             // Sort after population
             teachingGroupYears = teachingGroupYears.sort((a, b) => {
