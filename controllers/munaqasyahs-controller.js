@@ -356,6 +356,8 @@ const startTeachingGroupYearMunaqasyah = async (req, res, next) => {
                 studentNis: student.nis,
                 teachingGroupYearId: teachingGroupYearId,
                 classId: classObj._id,
+                isBeingScored: "false",
+                // Initialize all scores to 0 and examinerUserId to null
                 reciting: { score: 0, examinerUserId: null },
                 writing: { score: 0, examinerUserId: null },
                 quranTafsir: { score: 0, examinerUserId: null },

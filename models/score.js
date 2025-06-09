@@ -8,6 +8,7 @@ const scoreSchema = new Schema({
     studentNis: { type: Number, required: true },
     teachingGroupYearId: { type: mongoose.Types.ObjectId, required: true, ref: 'TeachingGroupYear' },
     classId: { type: mongoose.Types.ObjectId, required: true, ref: 'Class' },
+    isBeingScored: { type: String, required: true, default: false },
     reciting: {
         score: { type: Number, required: true },
         examinerUserId: { type: mongoose.Types.ObjectId, required: false, ref: 'User' },
