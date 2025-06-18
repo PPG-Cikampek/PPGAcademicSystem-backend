@@ -1,6 +1,7 @@
 const HttpError = require('../models/http-error')
 const mongoose = require('mongoose');
 
+const SubBranch = require('../models/subBranch');
 const Student = require('../models/student');
 const User = require('../models/user');
 
@@ -8,7 +9,7 @@ const getStudents = async (req, res, next) => {
     let students;
     try {
         students = await Student.find()
-            .populate({ path: 'userId', select: 'teachingGroupId', populate: { path: 'teachingGroupId', select: 'name', populate: { path: 'branchId', select: 'name' } } })
+            .populate({ path: 'userId', select: 'subBranchId', populate: { path: 'subBranchId', select: 'name', populate: { path: 'branchId', select: 'name' } } })
 
     } catch (err) {
         console.log(err)
@@ -27,14 +28,14 @@ const getStudentById = async (req, res, next) => {
     try {
         if (populate === 'attendance') {
             student = await Student.findById(studentId)
-                .populate({ path: 'userId', select: 'teachingGroupId', populate: { path: 'teachingGroupId', select: 'name', populate: { path: 'branchId', select: 'name' } } })
+                .populate({ path: 'userId', select: 'subBranchId', populate: { path: 'subBranchId', select: 'name', populate: { path: 'branchId', select: 'name' } } })
                 .populate({
                     path: 'attendanceIds',
                     populate: { path: 'classId', select: 'name' }
                 })
         } else {
             student = await Student.findById(studentId)
-                .populate({ path: 'userId', select: 'teachingGroupId', populate: { path: 'teachingGroupId', select: 'name', populate: { path: 'branchId', select: 'name' } } })
+                .populate({ path: 'userId', select: 'subBranchId', populate: { path: 'subBranchId', select: 'name', populate: { path: 'branchId', select: 'name' } } })
                 .populate({
                     path: 'classIds',
                     populate: { path: 'teachingGroupYearId' }
@@ -87,7 +88,7 @@ const getStudentByUserId = async (req, res, next) => {
 
     try {
         student = await Student.findOne({ userId })
-            .populate({ path: 'userId', select: 'teachingGroupId', populate: { path: 'teachingGroupId', select: 'name', populate: { path: 'branchId', select: 'name' } } })
+            .populate({ path: 'userId', select: 'subBranchId', populate: { path: 'subBranchId', select: 'name', populate: { path: 'branchId', select: 'name' } } })
         // .populate({
         //     path: 'classIds',
         //     populate: [
@@ -110,7 +111,7 @@ const getStudentReportByIdAndClassId = async (req, res, next) => {
     let student;
     try {
         student = await Student.find({ _id: studentId, classIds: classId })
-            .populate({ path: 'userId', select: 'teachingGroupId', populate: { path: 'teachingGroupId', select: 'name', populate: { path: 'branchId', select: 'name' } } })
+            .populate({ path: 'userId', select: 'subBranchId', populate: { path: 'subBranchId', select: 'name', populate: { path: 'branchId', select: 'name' } } })
             .populate({
                 path: 'attendanceIds',
                 populate: { path: 'classId', select: 'name' }
@@ -125,13 +126,53 @@ const getStudentReportByIdAndClassId = async (req, res, next) => {
     res.json({ student: student.toObject({ getters: true }) });
 }
 
-const getStudentsByTeachingGroupId = async (req, res, next) => {
-    const teachingGroupId = req.params.teachingGroupId;
+const getStudentsByBranchId = async (req, res, next) => {
+    const branchId = req.params.branchId;
+
+    let students;
+    try {
+        // 1. Find subBranches with the given branchId
+        const subBranches = await SubBranch.find({ branchId: branchId });
+        const subBranchIds = subBranches.map(sb => sb._id);
+
+        // 2. Find users with subBranchId in subBranchIds
+        const users = await User.find({ subBranchId: { $in: subBranchIds } });
+
+        // 3. Extract user IDs
+        const userIds = users.map(user => user._id);
+
+        // 4. Find students based on user IDs
+        students = await Student.find({ userId: { $in: userIds } })
+            .populate({
+                path: 'userId',
+                select: 'subBranchId',
+                populate: {
+                    path: 'subBranchId',
+                    select: 'name',
+                    populate: {
+                        path: 'branchId',
+                        select: 'name'
+                    }
+                }
+            })
+            .sort({ nis: 1 })
+
+    } catch (err) {
+        console.log(err)
+        return next(new HttpError("Internal server error occured!", 500))
+    }
+    console.log('Get students by branch ID requested')
+    res.json({ students })
+};
+
+
+const getStudentsBySubBranchId = async (req, res, next) => {
+    const subBranchId = req.params.subBranchId;
 
     let students;
     try {
         // 1. Find matching users
-        const users = await User.find({ teachingGroupId: teachingGroupId });
+        const users = await User.find({ subBranchId: subBranchId });
 
         // 2. Extract user IDs
         const userIds = users.map(user => user._id);
@@ -140,9 +181,9 @@ const getStudentsByTeachingGroupId = async (req, res, next) => {
         students = await Student.find({ userId: { $in: userIds } })
             .populate({
                 path: 'userId',
-                select: 'teachingGroupId',
+                select: 'subBranchId',
                 populate: {
-                    path: 'teachingGroupId',
+                    path: 'subBranchId',
                     select: 'name',
                     populate: {
                         path: 'branchId',
@@ -152,19 +193,22 @@ const getStudentsByTeachingGroupId = async (req, res, next) => {
             })
             .populate({
                 path: 'classIds',
-                select: ['name', 'teachingGroupYearId'],
-                populate: {
-                    path: 'teachingGroupYearId',
-                    select: 'academicYearId',
-                    populate: { path: 'academicYearId', select: ['name', 'isActive'] }
-                }
+                select: ['name', 'subBranchId'],
+                // populate: {
+                //     path: 'teachingGroupYearId',
+                //     select: 'academicYearId',
+                //     populate: { path: 'academicYearId', select: ['name', 'isActive'] }
+                // }
             })
             .sort({ nis: 1 });
 
-        students = students.map(student => {
-            const isActive = student.classIds.some(classId => classId.teachingGroupYearId.academicYearId.isActive);
-            return { ...student.toObject({ getters: true }), isActive };
-        });
+        console.log('test1:', students)
+        console.log('test2:', students[0].classIds.branchYearId)
+
+        // students = students.map(student => {
+        //     const isActive = student.classIds.some(classId => classId.teachingGroupYearId.academicYearId.isActive);
+        //     return { ...student.toObject({ getters: true }), isActive };
+        // });
 
     } catch (err) {
         console.log(err)
@@ -268,6 +312,7 @@ exports.getStudentByNis = getStudentByNis
 exports.getStudentByUserId = getStudentByUserId
 exports.getStudentReportByIdAndClassId = getStudentReportByIdAndClassId
 exports.getStudents = getStudents
-exports.getStudentsByTeachingGroupId = getStudentsByTeachingGroupId
+exports.getStudentsByBranchId = getStudentsByBranchId
+exports.getStudentsBySubBranchId = getStudentsBySubBranchId
 exports.createStudent = createStudent
 exports.updateStudent = updateStudent

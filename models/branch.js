@@ -5,7 +5,8 @@ const Schema = mongoose.Schema;
 const branchSchema = new Schema({
     name: { type: String, required: true },
     address: { type: String, required: true },
-    teachingGroups: [{ type: mongoose.Types.ObjectId, required: true, ref: 'TeachingGroup' }]
+    subBranches: [{ type: mongoose.Types.ObjectId, required: false, ref: 'SubBranch' }],
+    branchYears: [{ type: mongoose.Types.ObjectId, required: false, ref: 'BranchYear' }]
 });
 
 

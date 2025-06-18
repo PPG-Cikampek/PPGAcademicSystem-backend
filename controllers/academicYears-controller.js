@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 
 const User = require('../models/user');
 const Branch = require('../models/branch');
+const BranchYear = require('../models/branchYear');
 const TeachingGroup = require('../models/teachingGroup');
 const AcademicYear = require('../models/academicYear')
 const Class = require('../models/class')
@@ -17,8 +18,8 @@ const getAcademicYears = async (req, res, next) => {
         if (populate) {
             academicYears = await AcademicYear.find()
                 .populate({
-                    path: 'teachingGroupYears',
-                    populate: { path: 'teachingGroupId', select: 'name' },
+                    path: 'branchYears',
+                    populate: { path: 'branchId', select: 'name' },
                     // populate: { path: 'classes', select: 'name' }
                 })
                 .sort({ name: -1 });
@@ -123,7 +124,7 @@ const createAcademicYear = async (req, res, next) => {
     const createdAcademicYear = new AcademicYear({
         name,
         isActive: false,
-        isMunaqasyahActive: false,
+        munaqasyahStatus: 'notStarted',
         teachingGroupYears: []
     })
 
@@ -145,7 +146,7 @@ const activateAcademicYear = async (req, res, next) => {
     // Check if the provided ID exists
     let targetAcademicYear;
     try {
-        targetAcademicYear = await AcademicYear.findById(id).populate('teachingGroupYears');
+        targetAcademicYear = await AcademicYear.findById(id).populate('branchYears');
     } catch (err) {
         console.log(err);
         return next(new HttpError('Internal server error!', 500));
@@ -161,7 +162,7 @@ const activateAcademicYear = async (req, res, next) => {
         await AcademicYear.updateMany({}, { $set: { isActive: false } });
 
         // Set isActive = false for all teachingGroupYears in every academic year
-        await TeachingGroupYear.updateMany({}, { $set: { isActive: false } });
+        await BranchYear.updateMany({}, { $set: { isActive: false } });
 
     } catch (err) {
         console.log(err);
@@ -220,13 +221,13 @@ const updateAcademicYear = async (req, res, next) => {
 
 const startAcademicYearMunaqasyah = async (req, res, next) => {
     const academicYearId = req.params.academicYearId;
-    const { isMunaqasyahActive } = req.body;
+    const { munaqasyahStatus } = req.body;
 
     let existingAcademicYear;
     try {
         existingAcademicYear = await AcademicYear.findOneAndUpdate(
             { _id: academicYearId },
-            { isMunaqasyahActive },
+            { munaqasyahStatus },
             { new: true }
         );
 

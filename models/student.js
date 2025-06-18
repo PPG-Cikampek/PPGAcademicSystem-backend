@@ -14,6 +14,7 @@ const studentSchema = new Schema({
     image: { type: String, required: false },
     thumbnail: { type: String, required: false },
     isProfileComplete: { type: Boolean, required: false },
+    isInternal: { type: Boolean, required: false },
     attendanceIds: [{ type: mongoose.Types.ObjectId, required: false, ref: 'Attendance' }],
     classIds: [{ type: mongoose.Types.ObjectId, required: false, ref: 'Class' }],
 });

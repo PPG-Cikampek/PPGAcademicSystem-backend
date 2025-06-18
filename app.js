@@ -8,8 +8,9 @@ require('dotenv').config(); // Load environment variables
 const logRequest = require('./middlewares/log-request');
 const usersRoutes = require('./routes/users-route');
 const levelsRoutes = require('./routes/levels-route');
+const teachingGroupsRoutes = require('./routes/teacingGroups-route');
 const academicYearsRoutes = require('./routes/academicYears-route');
-const teachingGroupYearsRoutes = require('./routes/teachingGroupYears-route');
+const branchYearsRoutes = require('./routes/branchYears-route');
 const classesRoutes = require('./routes/classes-route');
 const teachersRoutes = require('./routes/teachers-route');
 const studentsRoutes = require('./routes/students-route');
@@ -29,6 +30,10 @@ const MONGO_URI = `mongodb://${process.env.DB_USER}:${process.env.DB_PASSWORD}@c
 const clientOptions = { serverApi: { version: '1', strict: true, deprecationErrors: true } };
 
 // Middleware
+app.use((req, res, next) => {
+    console.log('Received URL:', req.originalUrl);
+    next();
+});
 
 app.use(express.json()); // Parses incoming JSON requests
 app.use(express.urlencoded({ extended: true })); // Parses URL-encoded data
@@ -54,8 +59,9 @@ require('./scheduler/backup-scheduler');
 // Routes
 app.use('/api/users', usersRoutes);
 app.use('/api/levels', levelsRoutes);
+app.use('/api/teachingGroups', teachingGroupsRoutes);
 app.use('/api/academicYears', academicYearsRoutes);
-app.use('/api/teachingGroupYears', teachingGroupYearsRoutes);
+app.use('/api/branchYears', branchYearsRoutes);
 app.use('/api/classes', classesRoutes);
 app.use('/api/teachers', teachersRoutes);
 app.use('/api/students', studentsRoutes);

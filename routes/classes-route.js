@@ -27,7 +27,7 @@ router.patch('/unlock', classController.unlockClassById);
 
 
 
-// router.post('/teachingGroup', levelsController.createTeachingGroup);
+// router.post('/teachingGroup', levelsController.createSubBranch);
 
 
 // // router.post('/signup', usersController.signup);

@@ -1,11 +1,12 @@
 const HttpError = require('../models/http-error')
 const mongoose = require('mongoose');
 
+const SubBranch = require('../models/subBranch');
 const User = require('../models/user');
 const Branch = require('../models/branch');
 const TeachingGroup = require('../models/teachingGroup');
 
-const getTeachingGroupById = async (req, res, next) => {
+const getSubBranchById = async (req, res, next) => {
     const teachingGroupId = req.params.teachingGroupId;
     const { populate } = req.query;
 
@@ -35,7 +36,7 @@ const getTeachingGroupById = async (req, res, next) => {
         return next(new HttpError('Internal server error occurred!', 500));
     }
 
-    console.log('getTeachingGroupById requested')
+    console.log('getSubBranchById requested')
     res.status(200).json({ teachingGroup: identifiedTeachingGroup.toObject({ getters: true }) });
 };
 
@@ -74,9 +75,32 @@ const getBranchById = async (req, res, next) => {
         return next(new HttpError('Internal server error occurred!', 500));
     }
 
-    console.log('getTeachingGroupById requested')
+    console.log('getSubBranchById requested')
     res.status(200).json({ branch: identifiedBranch.toObject({ getters: true }) });
 };
+
+const getSubBranchesByBranchById = async (req, res, next) => {
+    const branchId = req.params.branchId;
+    const { populate } = req.query;
+
+    let subBranches;
+    try {
+        if (populate === 'true' || populate === 'branchId') {
+            subBranches = await SubBranch.find({ branchId: branchId }).populate('branchId');
+        } else {
+            subBranches = await SubBranch.find({ branchId: branchId });
+        }
+    } catch (err) {
+        console.error(err);
+        return next(new HttpError('Internal server error occurred!', 500));
+    }
+
+    if (!subBranches || subBranches.length === 0) {
+        return next(new HttpError(`No sub-branches found for branch with ID ${branchId}`, 404));
+    }
+
+    res.status(200).json({ subBranches: subBranches.map(x => x.toObject({ getters: true })) });
+}
 
 const getBranches = async (req, res, next) => {
     const { populate } = req.query; // Extract the 'populate' query parameter
@@ -85,7 +109,7 @@ const getBranches = async (req, res, next) => {
     try {
         // Conditionally apply populate based on the query parameter
         if (populate === 'true') {
-            branches = await Branch.find().populate('teachingGroups');
+            branches = await Branch.find().populate('subBranches');
         } else {
             branches = await Branch.find();
         }
@@ -98,18 +122,18 @@ const getBranches = async (req, res, next) => {
     res.json({ branches: branches.map(x => x.toObject({ getters: true })) });
 };
 
-const getTeachingGroupes = async (req, res, next) => {
+const getSubBranches = async (req, res, next) => {
     const { populate } = req.query; // Extract the 'populate' query parameter
-    let teachingGroups;
+    let subBranches;
 
     try {
         // Conditionally apply populate based on the query parameter
         if (populate === 'branchId') {
-            teachingGroups = await TeachingGroup.find().populate('branchId');
+            subBranches = await SubBranch.find().populate('branchId');
         } else if (populate === 'academicYears') {
-            teachingGroups = await TeachingGroup.find().populate('academicYears');;
+            subBranches = await SubBranch.find().populate('academicYears');;
         } else {
-            teachingGroups = await TeachingGroup.find();
+            subBranches = await SubBranch.find();
         }
     } catch (err) {
         console.error(err);
@@ -117,7 +141,7 @@ const getTeachingGroupes = async (req, res, next) => {
     }
 
     console.log('Get subbranches requested');
-    res.json({ teachingGroups: teachingGroups.map(x => x.toObject({ getters: true })) });
+    res.json({ subBranches: subBranches.map(x => x.toObject({ getters: true })) });
 };
 
 
@@ -152,7 +176,7 @@ const createBranch = async (req, res, next) => {
 }
 
 
-const createTeachingGroup = async (req, res, next) => {
+const createSubBranch = async (req, res, next) => {
     const { name, address, branchName } = req.body;
 
     let branch;
@@ -168,7 +192,7 @@ const createTeachingGroup = async (req, res, next) => {
         return next(new HttpError('Desa tidak ditemukan!', 500));
     }
 
-    const createdTeachingGroup = new TeachingGroup({
+    const createdSubBranch = new SubBranch({
         name,
         address,
         branchId: branch.id
@@ -177,8 +201,8 @@ const createTeachingGroup = async (req, res, next) => {
     try {
         const sess = await mongoose.startSession();
         sess.startTransaction()
-        await createdTeachingGroup.save({ session: sess });
-        branch.teachingGroups.push(createdTeachingGroup);
+        await createdSubBranch.save({ session: sess });
+        branch.subBranches.push(createdSubBranch);
         await branch.save({ session: sess });
         await sess.commitTransaction();
     } catch (err) {
@@ -187,7 +211,7 @@ const createTeachingGroup = async (req, res, next) => {
         return next(error);
     }
 
-    res.status(202).json({ message: `Berhasil mendaftarkan Kelompok ${branchName}!`, teachingGroup: createdTeachingGroup });
+    res.status(202).json({ message: `Berhasil mendaftarkan Kelompok ${branchName}!`, teachingGroup: createdSubBranch });
 }
 
 const deleteBranch = async (req, res, next) => {
@@ -269,7 +293,7 @@ const updateBranch = async (req, res, next) => {
     try {
         branch = await Branch.findByIdAndUpdate(
             branchId,
-            { name, address},
+            { name, address },
             { new: true, runValidators: true }
         );
     } catch (err) {
@@ -294,7 +318,7 @@ const updateTeachingGroup = async (req, res, next) => {
     try {
         teachingGroup = await TeachingGroup.findByIdAndUpdate(
             teachingGroupId,
-            { name, address},
+            { name, address },
             { new: true, runValidators: true }
         );
     } catch (err) {
@@ -311,12 +335,13 @@ const updateTeachingGroup = async (req, res, next) => {
     res.status(200).json({ message: 'Berhasil mengubah kelompok ajar!', teachingGroup: teachingGroup.toObject({ getters: true }) });
 }
 
-exports.getTeachingGroupById = getTeachingGroupById;
+exports.getSubBranchById = getSubBranchById;
 exports.getBranchById = getBranchById;
 exports.getBranches = getBranches;
+exports.getSubBranchesByBranchById = getSubBranchesByBranchById;
 exports.createBranch = createBranch;
-exports.getTeachingGroupes = getTeachingGroupes
-exports.createTeachingGroup = createTeachingGroup
+exports.getSubBranches = getSubBranches
+exports.createSubBranch = createSubBranch
 exports.deleteBranch = deleteBranch;
 exports.deleteTeachingGroup = deleteTeachingGroup;
 exports.updateTeachingGroup = updateTeachingGroup

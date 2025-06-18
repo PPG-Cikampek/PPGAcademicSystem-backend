@@ -19,7 +19,7 @@ const userSchema = new Schema({
     role: { type: String, required: true },
     image: { type: String, required: false },
     thumbnail: { type: String, required: false },
-    teachingGroupId: { type: mongoose.Types.ObjectId, required: false, ref: 'TeachingGroup' },
+    subBranchId: { type: mongoose.Types.ObjectId, required: false, ref: 'SubBranch' },
     resetToken: { type: String },
     resetTokenExpiration: { type: Date }
 });

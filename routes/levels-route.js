@@ -5,23 +5,24 @@ const levelsController = require('../controllers/levels-controller')
 const router = express.Router();
 
 router.get('/branches/', levelsController.getBranches)
-router.get('/branches/teaching-groupes/', levelsController.getTeachingGroupes);
+router.get('/branches/sub-branches/', levelsController.getSubBranches);
 
 router.get('/branches/:branchId', levelsController.getBranchById);
-router.get('/branches/teaching-groupes/:teachingGroupId', levelsController.getTeachingGroupById);
+router.get('/branches/:branchId/sub-branches/', levelsController.getSubBranchesByBranchById);
+router.get('/branches/sub-branches/:teachingGroupId', levelsController.getSubBranchById);
 
 
 
 // router.get('/:userId', usersController.getUsersById);
 
 router.post('/branches/', levelsController.createBranch);
-router.post('/branches/teaching-groupes/', levelsController.createTeachingGroup);
+router.post('/branches/sub-branches/', levelsController.createSubBranch);
 
 router.delete('/branches/', levelsController.deleteBranch);
-router.delete('/branches/teaching-groupes/', levelsController.deleteTeachingGroup);
+router.delete('/branches/sub-branches/', levelsController.deleteTeachingGroup);
 
 router.patch('/branches/:branchId', levelsController.updateBranch);
-router.patch('/branches/teaching-groupes/:teachingGroupId', levelsController.updateTeachingGroup);
+router.patch('/branches/sub-branches/:teachingGroupId', levelsController.updateTeachingGroup);
 
 // router.post('/signup', usersController.signup);
 
