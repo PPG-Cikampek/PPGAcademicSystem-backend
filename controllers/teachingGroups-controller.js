@@ -112,6 +112,72 @@ const registerSubBranchtoTeachingGroup = async (req, res, next) => {
     res.status(202).json({ message: `Berhasil mendaftarkan kelompok!`, class: existingTeachingGroup });
 }
 
+const lockTeachingGroupById = async (req, res, next) => {
+    const { teachingGroupId } = req.body;
+
+    let identifiedTeachingGroup;
+    try {
+        identifiedTeachingGroup = await TeachingGroup.findById(teachingGroupId)
+            .populate('subBranches')
+            .populate('classes');
+
+        if (!identifiedTeachingGroup) {
+            return next(new HttpError(`Could not find an Teaching Group with ID '${teachingGroupId}'`, 404));
+        }
+
+        if (identifiedTeachingGroup.subBranches.length === 0) {
+            return next(new HttpError('Kelas minimal harus ada 1 kelompok!', 400));
+        }
+
+        if (identifiedTeachingGroup.classes.length === 0) {
+            return next(new HttpError('Kelas minimal harus ada 1 kelas!', 400));
+        }
+
+        // Check if all classes are locked
+        const allClassesLocked = identifiedTeachingGroup.classes.every(cls => cls.isLocked === true);
+        if (!allClassesLocked) {
+            return next(new HttpError('Semua kelas di dalam KBM harus dikunci terlebih dahulu!', 400));
+        }
+
+        identifiedTeachingGroup = await TeachingGroup.findByIdAndUpdate(
+            teachingGroupId,
+            { isLocked: true },
+            { new: true, runValidators: true }
+        );
+
+    } catch (err) {
+        console.error(err);
+        return next(new HttpError('Gagal mengunci kelas!', 500));
+    }
+
+    console.log(`Locked teaching group with id ${teachingGroupId}`);
+    res.json({
+        message: 'Berhasil mengunci KBM!', teachingGroup: identifiedTeachingGroup.toObject({ getters: true })
+    });
+}
+
+const unlockTeachingGroupById = async (req, res, next) => {
+    const { teachingGroupId } = req.body;
+
+    let identifiedTeachingGroup;
+    try {
+        identifiedTeachingGroup = await TeachingGroup.findById(teachingGroupId)
+
+        identifiedTeachingGroup = await TeachingGroup.findByIdAndUpdate(
+            teachingGroupId,
+            { isLocked: false },
+            { new: true, runValidators: true }
+        );
+
+    } catch (err) {
+        console.error(err);
+        return next(new HttpError('Gagal membuka kelas!', 500));
+    }
+
+    console.log(`Unlocked teaching group with id ${teachingGroupId}`);
+    res.json({ message: 'Berhasil membuka KBM!', teachingGroup: identifiedTeachingGroup.toObject({ getters: true }) });
+}
+
 const deleteTeachingGroup = async (req, res, next) => {
     const { teachingGroupId } = req.body;
     if (!teachingGroupId) {
@@ -286,6 +352,8 @@ exports.getTeachingGroups = getTeachingGroups;
 exports.getTeachingGroupById = getTeachingGroupById;
 exports.createTeachingGroup = createTeachingGroup;
 exports.registerSubBranchtoTeachingGroup = registerSubBranchtoTeachingGroup;
+exports.lockTeachingGroupById = lockTeachingGroupById;
+exports.unlockTeachingGroupById = unlockTeachingGroupById;
 exports.deleteTeachingGroup = deleteTeachingGroup;
 exports.removeSubBranchFromTeachingGroup = removeSubBranchFromTeachingGroup;
 exports.removeClassFromTeachingGroup = removeClassFromTeachingGroup;

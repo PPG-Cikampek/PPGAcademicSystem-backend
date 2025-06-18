@@ -3,9 +3,11 @@ const mongoose = require('mongoose');
 
 const User = require('../models/user');
 const Branch = require('../models/branch');
+const SubBranch = require('../models/subBranch');
 const BranchYear = require('../models/branchYear');
 const AcademicYear = require('../models/academicYear')
 const Class = require('../models/class')
+const Score = require('../models/score');   
 
 const getBranchYears = async (req, res, next) => {
     const { populate } = req.query;
@@ -308,6 +310,140 @@ const deactivateBranchYear = async (req, res, next) => {
     });
 };
 
+const patchBranchYearMunaqasyahStatus = async (req, res, next) => {
+    const { branchYearId, action } = req.body;
+
+    let identifiedBranchYear;
+    try {
+        // Fetch the BranchYear with teachingGroups and their subBranches
+        identifiedBranchYear = await BranchYear.findById(branchYearId).populate({
+            path: 'teachingGroups',
+            populate: { path: 'subBranches' }
+        });
+
+        if (!identifiedBranchYear) {
+            return next(new HttpError(`Could not find an BranchYear with ID '${branchYearId}'`, 404));
+        }
+
+        if (identifiedBranchYear.isActive === false) {
+            return next(new HttpError(`Tahun ajaran nonaktif!`, 404));
+        }
+
+        // Collect all subBranches from all teachingGroups
+        const allSubBranches = identifiedBranchYear.teachingGroups
+            .flatMap(tg => tg.subBranches || []);
+
+        // Remove duplicates (by _id)
+        const uniqueSubBranches = Array.from(
+            new Map(allSubBranches.map(sb => [sb._id.toString(), sb])).values()
+        );
+
+        // Check if any subBranch has munaqasyahStatus === 'inProgress'
+        const hasInProgress = uniqueSubBranches.some(sb => sb.munaqasyahStatus === 'inProgress');
+        if (hasInProgress) {
+            return next(new HttpError('Terdapat kelompok yang masih munaqosah!', 400));
+        }
+
+        // All clear, update munaqasyahStatus
+        identifiedBranchYear = await BranchYear.findByIdAndUpdate(
+            branchYearId,
+            { munaqasyahStatus: action },
+            { new: true, runValidators: true }
+        );
+
+    } catch (err) {
+        console.error(err);
+        return next(new HttpError('Something went wrong while updating the BranchYear.', 500));
+    }
+
+    console.log(`BranchYear: '${identifiedBranchYear.name}' updated!`);
+    res.status(200).json({
+        message: 'Berhasil mengupdate status munaqosah tahun ajaran!',
+        branchYear: identifiedBranchYear.toObject({ getters: true })
+    });
+};
+
+
+const patchSubBranchMunaqasyahStatus = async (req, res, next) => {
+    const branchYearId = req.params.branchYearId;
+    const { munaqasyahStatus, subBranchId } = req.body;
+
+    let existingBranchYear;
+    let subBranch;
+    try {
+        // Fetch the branchYear with teachingGroups, classes, and students
+        existingBranchYear = await BranchYear.findById(branchYearId)
+            .populate({
+                path: 'teachingGroups',
+                populate: [
+                    { path: 'classes', populate: { path: 'students' } },
+                    { path: 'subBranches' }
+                ]
+            });
+
+        if (!existingBranchYear) {
+            return next(new HttpError("Tahun Ajaran Desa tidak ditemukan!", 404));
+        }
+
+        // Fetch the subBranch
+        subBranch = await SubBranch.findById(subBranchId);
+        if (!subBranch) {
+            return next(new HttpError("SubBranch tidak ditemukan!", 404));
+        }
+
+        if (subBranch.munaqasyahStatus === 'notStarted') {
+            // Find all teachingGroups in this branchYear that include this subBranch
+            const relevantTeachingGroups = existingBranchYear.teachingGroups.filter(tg =>
+                tg.subBranches && tg.subBranches.some(sb => sb && sb._id.toString() === subBranchId)
+            );
+
+            // For each relevant teachingGroup, get all students in its classes
+            const scoreEntries = relevantTeachingGroups.flatMap(tg =>
+                (tg.classes || []).flatMap(classObj =>
+                    (classObj.students || []).map(student => ({
+                        userId: student.userId,
+                        studentId: student._id,
+                        studentNis: student.nis,
+                        branchYearId: branchYearId,
+                        subBranchId: subBranchId,
+                        teachingGroupId: tg._id,
+                        classId: classObj._id,
+                        isBeingScored: "false",
+                        reciting: { score: 0, examinerUserId: null },
+                        writing: { score: 0, examinerUserId: null },
+                        quranTafsir: { score: 0, examinerUserId: null },
+                        hadithTafsir: { score: 0, examinerUserId: null },
+                        practice: { score: 0, examinerUserId: null },
+                        moralManner: { score: 0, examinerUserId: null },
+                        memorizingSurah: { score: 0, examinerUserId: null },
+                        memorizingHadith: { score: 0, examinerUserId: null },
+                        memorizingDua: { score: 0, examinerUserId: null },
+                        memorizingBeautifulName: { score: 0, examinerUserId: null },
+                        knowledge: { score: 0, examinerUserId: null },
+                        independence: { score: 0, examinerUserId: null }
+                    })))
+            );
+            if (scoreEntries.length > 0) {
+                await Score.insertMany(scoreEntries);
+            }
+        }
+
+        // Update the subBranch's munaqasyahStatus
+        subBranch.munaqasyahStatus = munaqasyahStatus;
+        await subBranch.save();
+
+        console.log(`Started munaqosyah for subBranch with id ${subBranchId}`);
+        res.json({
+            message: "Munaqosah Kelompok dimulai!",
+            branchYear: existingBranchYear.toObject({ getters: true })
+        });
+
+    } catch (err) {
+        console.error(err);
+        return next(new HttpError("Internal server error occurred!", 500));
+    }
+};
+
 
 exports.getBranchYearById = getBranchYearById
 exports.getBranchYearByAcademicYearIdAndBranchId = getBranchYearByAcademicYearIdAndBranchId
@@ -319,3 +455,6 @@ exports.deleteBranchYear = deleteBranchYear
 // exports.updateBranchYear = updateBranchYear
 exports.activateBranchYear = activateBranchYear
 exports.deactivateBranchYear = deactivateBranchYear
+
+exports.patchBranchYearMunaqasyahStatus = patchBranchYearMunaqasyahStatus
+exports.patchSubBranchMunaqasyahStatus = patchSubBranchMunaqasyahStatus

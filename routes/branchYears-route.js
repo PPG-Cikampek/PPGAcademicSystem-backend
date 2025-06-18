@@ -18,6 +18,8 @@ router.delete('/', branchYearController.deleteBranchYear)
 router.patch('/activate', branchYearController.activateBranchYear)
 router.patch('/deactivate', branchYearController.deactivateBranchYear)
 
+router.patch('/munaqasyah', branchYearController.patchBranchYearMunaqasyahStatus)
+router.patch('/munaqasyah/:branchYearId/sub-branch/', branchYearController.patchSubBranchMunaqasyahStatus)
 
 
 // router.post('/', teachingGroupYearController.createSubBranchYear);
