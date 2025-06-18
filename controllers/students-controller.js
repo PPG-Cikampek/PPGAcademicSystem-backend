@@ -38,7 +38,7 @@ const getStudentById = async (req, res, next) => {
                 .populate({ path: 'userId', select: 'subBranchId', populate: { path: 'subBranchId', select: 'name', populate: { path: 'branchId', select: 'name' } } })
                 .populate({
                     path: 'classIds',
-                    populate: { path: 'teachingGroupYearId' }
+                    populate: { path: 'teachingGroupId' }
                 })
         }
     } catch (err) {
