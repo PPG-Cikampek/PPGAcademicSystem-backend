@@ -385,6 +385,11 @@ const patchSubBranchMunaqasyahStatus = async (req, res, next) => {
             return next(new HttpError("Tahun Ajaran Desa tidak ditemukan!", 404));
         }
 
+        // Check munaqasyahStatus of branchYear
+        if (existingBranchYear.munaqasyahStatus !== 'inProgress') {
+            return next(new HttpError("Munaqasyah Desa belum dimulai!", 400));
+        }
+
         // Fetch the subBranch
         subBranch = await SubBranch.findById(subBranchId);
         if (!subBranch) {
