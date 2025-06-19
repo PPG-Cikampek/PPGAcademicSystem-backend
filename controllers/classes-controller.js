@@ -86,7 +86,7 @@ const getClassById = async (req, res, next) => {
                     },
                     // { path: 'attendances', select: 'forDate' }
                 ])
-                .populate({ path: 'teachers' })
+                .populate({ path: 'teachers', populate: { path: 'userId', select: 'subBranchId', populate: { path: 'subBranchId', select: 'name' } } })
                 .populate({ path: 'students', populate: { path: 'userId', select: 'subBranchId', populate: { path: 'subBranchId', select: 'name' } } })
         } else if (populate === 'branchYear') {
             identifiedClass = await Class.findById(classId)
