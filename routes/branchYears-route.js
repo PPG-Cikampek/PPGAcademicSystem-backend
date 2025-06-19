@@ -7,6 +7,7 @@ const router = express.Router();
 router.get('/', branchYearController.getBranchYears)
 router.get('/:branchYearId', branchYearController.getBranchYearById)
 router.get('/branch/:branchId', branchYearController.getBranchYearsByBranchId)
+router.get('/branch/:branchId/sub-branch/:subBranchId', branchYearController.getBranchYearsByBranchIdForSubBranchId)
 router.get('/branch/:branchId/academic-year/:academicYearId', branchYearController.getBranchYearByAcademicYearIdAndBranchId)
 
 router.post('/', branchYearController.registerYearToBranch)

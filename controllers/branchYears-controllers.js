@@ -7,7 +7,8 @@ const SubBranch = require('../models/subBranch');
 const BranchYear = require('../models/branchYear');
 const AcademicYear = require('../models/academicYear')
 const Class = require('../models/class')
-const Score = require('../models/score');   
+const TeachingGroup = require('../models/teachingGroup');
+const Score = require('../models/score');
 
 const getBranchYears = async (req, res, next) => {
     const { populate } = req.query;
@@ -104,6 +105,63 @@ const getBranchYearsByBranchId = async (req, res, next) => {
     res.json({ branchYears: branchYears.map(x => x.toObject({ getters: true })) });
 };
 
+
+const getBranchYearsByBranchIdForSubBranchId = async (req, res, next) => {
+    const branchId = req.params.branchId;
+    const subBranchId = req.params.subBranchId;
+
+    try {
+        // Get the subBranch document
+        const subBranch = await SubBranch.findById(subBranchId);
+        if (!subBranch) {
+            return next(new HttpError('SubBranch not found!', 404));
+        }
+
+        // 1. Find all BranchYear for the branchId
+        const branchYears = await BranchYear.find({ branchId });
+        if (!branchYears.length) {
+            return res.json({ subBranchYears: [] });
+        }
+
+        // 2. For each BranchYear, find TeachingGroups with subBranchId
+        const result = [];
+        for (const branchYear of branchYears) {
+            const teachingGroups = await TeachingGroup.find({
+                branchYearId: branchYear._id,
+                subBranches: subBranchId
+            });
+
+            // 3. For each TeachingGroup, find Classes
+            let classes = [];
+            for (const tg of teachingGroups) {
+                const groupClasses = await Class.find({ teachingGroupId: tg._id });
+                classes = classes.concat(groupClasses);
+            }
+
+            // Only include subBranch for active branchYear
+            const resultObj = {
+                branchYear: branchYear.toObject({ getters: true }),
+                classes: classes.map(cls => cls.toObject({ getters: true }))
+            };
+            if (branchYear.isActive) {
+                resultObj.subBranch = subBranch.toObject({ getters: true });
+            }
+            result.push(resultObj);
+        }
+
+        // Sort result by branchYear.name descending
+        result.sort((a, b) => {
+            const nameA = a.branchYear.name || "";
+            const nameB = b.branchYear.name || "";
+            return nameB.localeCompare(nameA); // Descending order
+        });
+
+        res.json({ subBranchYears: result });
+    } catch (err) {
+        console.error(err);
+        return next(new HttpError('Internal server error occurred!', 500));
+    }
+};
 
 const registerYearToBranch = async (req, res, next) => {
     const { name, academicYearId, branchId } = req.body;
@@ -368,15 +426,23 @@ const patchSubBranchMunaqasyahStatus = async (req, res, next) => {
     const branchYearId = req.params.branchYearId;
     const { munaqasyahStatus, subBranchId } = req.body;
 
+    console.log(branchYearId, munaqasyahStatus, subBranchId);
+
     let existingBranchYear;
     let subBranch;
     try {
-        // Fetch the branchYear with teachingGroups, classes, and students
+        // Fetch the branchYear with teachingGroups, classes, and students (with userId populated)
         existingBranchYear = await BranchYear.findById(branchYearId)
             .populate({
                 path: 'teachingGroups',
                 populate: [
-                    { path: 'classes', populate: { path: 'students' } },
+                    {
+                        path: 'classes',
+                        populate: {
+                            path: 'students',
+                            populate: { path: 'userId', select: 'subBranchId' }
+                        }
+                    },
                     { path: 'subBranches' }
                 ]
             });
@@ -402,31 +468,34 @@ const patchSubBranchMunaqasyahStatus = async (req, res, next) => {
                 tg.subBranches && tg.subBranches.some(sb => sb && sb._id.toString() === subBranchId)
             );
 
-            // For each relevant teachingGroup, get all students in its classes
+            // For each relevant teachingGroup, get all students in its classes that belong to this subBranch
             const scoreEntries = relevantTeachingGroups.flatMap(tg =>
                 (tg.classes || []).flatMap(classObj =>
-                    (classObj.students || []).map(student => ({
-                        userId: student.userId,
-                        studentId: student._id,
-                        studentNis: student.nis,
-                        branchYearId: branchYearId,
-                        subBranchId: subBranchId,
-                        teachingGroupId: tg._id,
-                        classId: classObj._id,
-                        isBeingScored: "false",
-                        reciting: { score: 0, examinerUserId: null },
-                        writing: { score: 0, examinerUserId: null },
-                        quranTafsir: { score: 0, examinerUserId: null },
-                        hadithTafsir: { score: 0, examinerUserId: null },
-                        practice: { score: 0, examinerUserId: null },
-                        moralManner: { score: 0, examinerUserId: null },
-                        memorizingSurah: { score: 0, examinerUserId: null },
-                        memorizingHadith: { score: 0, examinerUserId: null },
-                        memorizingDua: { score: 0, examinerUserId: null },
-                        memorizingBeautifulName: { score: 0, examinerUserId: null },
-                        knowledge: { score: 0, examinerUserId: null },
-                        independence: { score: 0, examinerUserId: null }
-                    })))
+                    (classObj.students || [])
+                        .filter(student => student.userId && student.userId.subBranchId && student.userId.subBranchId.toString() === subBranchId)
+                        .map(student => ({
+                            userId: student.userId._id,
+                            studentId: student._id,
+                            studentNis: student.nis,
+                            branchYearId: branchYearId,
+                            subBranchId: subBranchId,
+                            teachingGroupId: tg._id,
+                            classId: classObj._id,
+                            isBeingScored: "false",
+                            reciting: { score: 0, examinerUserId: null },
+                            writing: { score: 0, examinerUserId: null },
+                            quranTafsir: { score: 0, examinerUserId: null },
+                            hadithTafsir: { score: 0, examinerUserId: null },
+                            practice: { score: 0, examinerUserId: null },
+                            moralManner: { score: 0, examinerUserId: null },
+                            memorizingSurah: { score: 0, examinerUserId: null },
+                            memorizingHadith: { score: 0, examinerUserId: null },
+                            memorizingDua: { score: 0, examinerUserId: null },
+                            memorizingBeautifulName: { score: 0, examinerUserId: null },
+                            knowledge: { score: 0, examinerUserId: null },
+                            independence: { score: 0, examinerUserId: null }
+                        }))
+                )
             );
             if (scoreEntries.length > 0) {
                 await Score.insertMany(scoreEntries);
@@ -439,7 +508,8 @@ const patchSubBranchMunaqasyahStatus = async (req, res, next) => {
 
         console.log(`Started munaqosyah for subBranch with id ${subBranchId}`);
         res.json({
-            message: "Munaqosah Kelompok dimulai!",
+            message: munaqasyahStatus === 'inProgress' ? 'Munaqosah Kelompok dimulai!' : 'Munaqosah Kelompok selesai!',
+            subBranch,
             branchYear: existingBranchYear.toObject({ getters: true })
         });
 
@@ -452,7 +522,7 @@ const patchSubBranchMunaqasyahStatus = async (req, res, next) => {
 
 exports.getBranchYearById = getBranchYearById
 exports.getBranchYearByAcademicYearIdAndBranchId = getBranchYearByAcademicYearIdAndBranchId
-
+exports.getBranchYearsByBranchIdForSubBranchId = getBranchYearsByBranchIdForSubBranchId
 exports.getBranchYears = getBranchYears
 exports.getBranchYearsByBranchId = getBranchYearsByBranchId
 exports.registerYearToBranch = registerYearToBranch

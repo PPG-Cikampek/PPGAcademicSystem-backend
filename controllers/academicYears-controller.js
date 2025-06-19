@@ -70,7 +70,7 @@ const getMunaqasyahPackages = async (req, res, next) => {
     }
 
     console.log('Munaqasyah Packages requested');
-    res.status(200).json({ 
+    res.status(200).json({
         packages: academicYears.map(year => {
             const yearObj = year.toObject({ getters: true });
             // Spread munaqasyah properties to root level
@@ -219,25 +219,31 @@ const updateAcademicYear = async (req, res, next) => {
     res.status(200).json({ message: 'Berhasil mengubah kelompok ajar!', academicYear: academicYear.toObject({ getters: true }) });
 }
 
-const startAcademicYearMunaqasyah = async (req, res, next) => {
+const patchAcademicYearMunaqasyahStatus = async (req, res, next) => {
     const academicYearId = req.params.academicYearId;
     const { munaqasyahStatus } = req.body;
 
     let existingAcademicYear;
     try {
-        existingAcademicYear = await AcademicYear.findOneAndUpdate(
-            { _id: academicYearId },
-            { munaqasyahStatus },
-            { new: true }
-        );
-
+        // Fetch the academic year and populate branchYears
+        existingAcademicYear = await AcademicYear.findById(academicYearId).populate('branchYears');
         if (!existingAcademicYear) {
             return next(new HttpError("Tahun Ajaran tidak ditemukan!", 404));
         }
 
-        console.log(`Started munaqosyah for AcademicYearwith id ${academicYearId}`);
+        // Check if any branchYear has munaqasyahStatus === 'inProgress'
+        const hasInProgress = (existingAcademicYear.branchYears || []).some(by => by.munaqasyahStatus === 'inProgress');
+        if (hasInProgress) {
+            return next(new HttpError("Terdapat desa yang belum selesai munaqosah!", 400));
+        }
+
+        // Update munaqasyahStatus
+        existingAcademicYear.munaqasyahStatus = munaqasyahStatus;
+        await existingAcademicYear.save();
+
+        console.log(`patched munaqosyahStatus for AcademicYearwith id ${academicYearId}`);
         res.json({
-            message: "Munaqosah dimulai!",
+            message: munaqasyahStatus === 'inProgress' ? 'Munaqosah dimulai!' : 'Munaqasyah selesai!',
             question: existingAcademicYear.toObject({ getters: true })
         });
 
@@ -285,6 +291,6 @@ exports.createAcademicYear = createAcademicYear;
 exports.activateAcademicYear = activateAcademicYear;
 
 exports.updateAcademicYear = updateAcademicYear
-exports.startAcademicYearMunaqasyah = startAcademicYearMunaqasyah
+exports.patchAcademicYearMunaqasyahStatus = patchAcademicYearMunaqasyahStatus
 exports.deleteAcademicYear = deleteAcademicYear
 

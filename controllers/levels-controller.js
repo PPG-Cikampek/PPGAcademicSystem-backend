@@ -195,6 +195,7 @@ const createSubBranch = async (req, res, next) => {
     const createdSubBranch = new SubBranch({
         name,
         address,
+        munaqasyahStatus: 'notStarted',
         branchId: branch.id
     });
 
