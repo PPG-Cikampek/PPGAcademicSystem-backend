@@ -194,21 +194,19 @@ const getStudentsBySubBranchId = async (req, res, next) => {
             .populate({
                 path: 'classIds',
                 select: ['name', 'subBranchId'],
-                // populate: {
-                //     path: 'teachingGroupYearId',
-                //     select: 'academicYearId',
-                //     populate: { path: 'academicYearId', select: ['name', 'isActive'] }
-                // }
+                populate: {
+                    path: 'teachingGroupId',
+                    select: 'branchYearId',
+                    populate: { path: 'branchYearId', select: ['name', 'isActive'] }
+                }
             })
             .sort({ nis: 1 });
 
-        console.log('test1:', students)
-        console.log('test2:', students[0].classIds.branchYearId)
 
-        // students = students.map(student => {
-        //     const isActive = student.classIds.some(classId => classId.teachingGroupYearId.academicYearId.isActive);
-        //     return { ...student.toObject({ getters: true }), isActive };
-        // });
+        students = students.map(student => {
+            const isActive = student.classIds.some(classId => classId.teachingGroupId.branchYearId.isActive);
+            return { ...student.toObject({ getters: true }), isActive };
+        });
 
     } catch (err) {
         console.log(err)

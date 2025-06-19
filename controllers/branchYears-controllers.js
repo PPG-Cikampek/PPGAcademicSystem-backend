@@ -463,40 +463,55 @@ const patchSubBranchMunaqasyahStatus = async (req, res, next) => {
         }
 
         if (subBranch.munaqasyahStatus === 'notStarted') {
+            console.log("Starting to process teaching groups for subBranch:", subBranchId);
+
             // Find all teachingGroups in this branchYear that include this subBranch
             const relevantTeachingGroups = existingBranchYear.teachingGroups.filter(tg =>
                 tg.subBranches && tg.subBranches.some(sb => sb && sb._id.toString() === subBranchId)
             );
 
+            console.log("Relevant teaching groups found:", relevantTeachingGroups);
+
             // For each relevant teachingGroup, get all students in its classes that belong to this subBranch
-            const scoreEntries = relevantTeachingGroups.flatMap(tg =>
-                (tg.classes || []).flatMap(classObj =>
-                    (classObj.students || [])
-                        .filter(student => student.userId && student.userId.subBranchId && student.userId.subBranchId.toString() === subBranchId)
-                        .map(student => ({
-                            userId: student.userId._id,
-                            studentId: student._id,
-                            studentNis: student.nis,
-                            branchYearId: branchYearId,
-                            subBranchId: subBranchId,
-                            teachingGroupId: tg._id,
-                            classId: classObj._id,
-                            isBeingScored: "false",
-                            reciting: { score: 0, examinerUserId: null },
-                            writing: { score: 0, examinerUserId: null },
-                            quranTafsir: { score: 0, examinerUserId: null },
-                            hadithTafsir: { score: 0, examinerUserId: null },
-                            practice: { score: 0, examinerUserId: null },
-                            moralManner: { score: 0, examinerUserId: null },
-                            memorizingSurah: { score: 0, examinerUserId: null },
-                            memorizingHadith: { score: 0, examinerUserId: null },
-                            memorizingDua: { score: 0, examinerUserId: null },
-                            memorizingBeautifulName: { score: 0, examinerUserId: null },
-                            knowledge: { score: 0, examinerUserId: null },
-                            independence: { score: 0, examinerUserId: null }
-                        }))
-                )
-            );
+            const scoreEntries = relevantTeachingGroups.flatMap(tg => {
+                console.log("Processing teaching group:", tg._id);
+
+                return (tg.classes || []).flatMap(classObj => {
+                    console.log("Processing class:", classObj._id);
+
+                    return (classObj.students || [])
+                        .filter(student => {
+                            const belongsToSubBranch = student.userId && student.userId.subBranchId && student.userId.subBranchId.toString() === subBranchId;
+                            console.log(`Student ${student._id} belongs to subBranch:`, belongsToSubBranch);
+                            return belongsToSubBranch;
+                        })
+                        .map(student => {
+                            console.log("Creating score entry for student:", student._id);
+                            return {
+                                userId: student.userId._id,
+                                studentId: student._id,
+                                studentNis: student.nis,
+                                branchYearId: branchYearId,
+                                subBranchId: subBranchId,
+                                teachingGroupId: tg._id,
+                                classId: classObj._id,
+                                isBeingScored: "false",
+                                reciting: { score: 0, examinerUserId: null },
+                                writing: { score: 0, examinerUserId: null },
+                                quranTafsir: { score: 0, examinerUserId: null },
+                                hadithTafsir: { score: 0, examinerUserId: null },
+                                practice: { score: 0, examinerUserId: null },
+                                moralManner: { score: 0, examinerUserId: null },
+                                memorizingSurah: { score: 0, examinerUserId: null },
+                                memorizingHadith: { score: 0, examinerUserId: null },
+                                memorizingDua: { score: 0, examinerUserId: null },
+                                memorizingBeautifulName: { score: 0, examinerUserId: null },
+                                knowledge: { score: 0, examinerUserId: null },
+                                independence: { score: 0, examinerUserId: null }
+                            };
+                        });
+                });
+            });
             if (scoreEntries.length > 0) {
                 await Score.insertMany(scoreEntries);
             }
@@ -506,7 +521,7 @@ const patchSubBranchMunaqasyahStatus = async (req, res, next) => {
         subBranch.munaqasyahStatus = munaqasyahStatus;
         await subBranch.save();
 
-        console.log(`Started munaqosyah for subBranch with id ${subBranchId}`);
+        console.log(`changed munaqasyah status for subBranch with id ${subBranchId}`);
         res.json({
             message: munaqasyahStatus === 'inProgress' ? 'Munaqosah Kelompok dimulai!' : 'Munaqosah Kelompok selesai!',
             subBranch,

@@ -110,8 +110,18 @@ const getBranches = async (req, res, next) => {
         // Conditionally apply populate based on the query parameter
         if (populate === 'true') {
             branches = await Branch.find().populate('subBranches');
+            // Sort branches by name ascending
+            branches = branches.sort((a, b) => a.name.localeCompare(b.name));
+            // Sort subBranches by name ascending for each branch
+            branches.forEach(branch => {
+                if (branch.subBranches && Array.isArray(branch.subBranches)) {
+                    branch.subBranches = branch.subBranches.sort((a, b) => a.name.localeCompare(b.name));
+                }
+            });
         } else {
             branches = await Branch.find();
+            // Sort branches by name ascending
+            branches = branches.sort((a, b) => a.name.localeCompare(b.name));
         }
     } catch (err) {
         console.error(err);

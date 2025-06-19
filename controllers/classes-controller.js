@@ -178,11 +178,10 @@ const getClassesByTeachingGroupId = async (req, res, next) => {
             // { path: 'attendances', select: 'forDate' }
         ]);
 
-        console.log(teachingGroupId)
-        console.log('before filter', classes)
-        // Filter classes manually
-        classes = classes.filter(cls => cls.teachingGroupId._id.toString() === teachingGroupId);
-        console.log('after filter', classes)
+        // console.log('before filter', classes)
+        console.log(classes)
+        classes = classes.filter(cls => cls.teachingGroupId._id === teachingGroupId);
+        // console.log('after filter', classes)
     } catch (err) {
         console.error(err);
         return next(new HttpError("Internal server error occurred!", 500));
@@ -299,7 +298,6 @@ const deleteClass = async (req, res, next) => {
 const registerStudentToClass = async (req, res, next) => {
     const { classId, studentId } = req.body;
 
-    // Finding relevant subbranch and academic year
     let existingClass;
     let existingStudent;
     try {
@@ -317,17 +315,26 @@ const registerStudentToClass = async (req, res, next) => {
         return next(new HttpError('Peserta tidak ditemukan!', 500));
     }
 
-    const isStudentEnrolled = existingClass.students.some(student => student.toString() === studentId);
+    // Check if student is already enrolled in any class in the same teaching group
+    const studentClassIds = existingStudent.classIds || [];
+    if (studentClassIds.length > 0) {
+        const studentClasses = await Class.find({ _id: { $in: studentClassIds } });
+        const isInSameTeachingGroup = studentClasses.some(cls =>
+            cls.teachingGroupId.toString() === existingClass.teachingGroupId.toString()
+        );
+        if (isInSameTeachingGroup) {
+            return next(new HttpError('Peserta didik sudah terdaftar di kelas lain dalam KBM ini!', 500));
+        }
+    }
 
+    const isStudentEnrolled = existingClass.students.some(student => student.toString() === studentId);
     if (isStudentEnrolled) {
         return next(new HttpError('Peserta didik sudah terdaftar di kelas ini!', 500));
     }
 
-
     try {
         const sess = await mongoose.startSession();
         sess.startTransaction()
-        // await createdTeachingGroupYear.save({ session: sess });
         existingStudent.classIds.push(existingClass);
         existingClass.students.push(existingStudent);
         await existingStudent.save({ session: sess });

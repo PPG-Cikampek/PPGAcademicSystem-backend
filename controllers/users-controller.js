@@ -347,6 +347,15 @@ const requestAccounts = async (req, res, next) => {
 const createUser = async (req, res, next) => {
     const { name, email, password, role, subBranchId, teacherDetails } = req.body;
 
+    const normalizeName = (name) => {
+        return name
+            .split(' ')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+            .join(' ');
+    };
+
+    const normalizedName = normalizeName(name);
+
     if (req.userData.userRole !== 'admin') {
         return next(new HttpError('Unauthorized', 401));
     }
@@ -387,7 +396,7 @@ const createUser = async (req, res, next) => {
 
     // Create the new user
     const newUser = new User({
-        name,
+        name: normalizedName,
         email,
         password: hashedPassword,
         role,
@@ -401,7 +410,7 @@ const createUser = async (req, res, next) => {
         console.log(nig)
         teacher = new Teacher({
             userId: newUser._id, // Reference to the new user's ID
-            name,
+            name: normalizedName,
             nig,
             phone: "",
             position,
