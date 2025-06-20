@@ -42,14 +42,27 @@ const getBranchYears = async (req, res, next) => {
 };
 
 const getBranchYearById = async (req, res, next) => {
-    const branchYearId = req.params.branchYearId
+    const branchYearId = req.params.branchYearId;
+    const { populate } = req.query;
 
     let identifiedBranchYears;
     try {
-        identifiedBranchYears = await BranchYear.findById(branchYearId)
+        if (populate === 'subBranches') {
+            identifiedBranchYears = await BranchYear.findById(branchYearId)
+                .populate({
+                    path: 'teachingGroups',
+                    populate: { path: 'subBranches' }
+                });
+        } else {
+            identifiedBranchYears = await BranchYear.findById(branchYearId);
+        }
     } catch (err) {
         console.error(err);
         return next(new HttpError("Internal server error occurred!", 500));
+    }
+
+    if (!identifiedBranchYears) {
+        return next(new HttpError(`BranchYear with ID '${branchYearId}' not found!`, 404));
     }
 
     console.log(`Get branchYearById of ID '${branchYearId}' requested`);

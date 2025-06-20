@@ -26,7 +26,7 @@ const getTeachingGroupById = async (req, res, next) => {
         identifiedTeachingGroup = await TeachingGroup.findById(teachingGroupId)
             .populate('classes')
             .populate('subBranches')
-            .populate({ path: 'branchYearId', select: 'academicYearId', populate: { path: 'academicYearId', select: 'isActive' } })
+            .populate({ path: 'branchYearId', select: ['academicYearId', 'isActive'], populate: { path: 'academicYearId', select: 'isActive' } })
     } catch (err) {
         const error = new HttpError('Fetching teaching groups failed, please try again later.', 500);
         return next(error);
@@ -125,6 +125,15 @@ const lockTeachingGroupById = async (req, res, next) => {
             return next(new HttpError(`Could not find an Teaching Group with ID '${teachingGroupId}'`, 404));
         }
 
+        // Check branchYearId.isActive
+        const branchYear = await BranchYear.findById(identifiedTeachingGroup.branchYearId);
+        if (!branchYear) {
+            return next(new HttpError('BranchYear tidak ditemukan!', 404));
+        }
+        if (branchYear.isActive) {
+            return next(new HttpError('Tidak dapat mengunci KBM pada tahun ajaran yang aktif!', 400));
+        }
+
         if (identifiedTeachingGroup.subBranches.length === 0) {
             return next(new HttpError('Kelas minimal harus ada 1 kelompok!', 400));
         }
@@ -161,7 +170,20 @@ const unlockTeachingGroupById = async (req, res, next) => {
 
     let identifiedTeachingGroup;
     try {
-        identifiedTeachingGroup = await TeachingGroup.findById(teachingGroupId)
+        identifiedTeachingGroup = await TeachingGroup.findById(teachingGroupId);
+
+        if (!identifiedTeachingGroup) {
+            return next(new HttpError(`Could not find an Teaching Group with ID '${teachingGroupId}'`, 404));
+        }
+
+        // Check branchYearId.isActive
+        const branchYear = await BranchYear.findById(identifiedTeachingGroup.branchYearId);
+        if (!branchYear) {
+            return next(new HttpError('BranchYear tidak ditemukan!', 404));
+        }
+        if (branchYear.isActive) {
+            return next(new HttpError('Tidak dapat membuka KBM pada tahun ajaran yang aktif!', 400));
+        }
 
         identifiedTeachingGroup = await TeachingGroup.findByIdAndUpdate(
             teachingGroupId,
