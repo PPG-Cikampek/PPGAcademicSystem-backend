@@ -154,6 +154,52 @@ const getClassScoresByBranchYearId = async (req, res, next) => {
     const subBranchId = req.query.subBranchId;
     console.log(branchYearId, classId, subBranchId);
 
+    const getClassIdString = (classId) => {
+        if (!classId) return '';
+        if (typeof classId === 'object' && classId._id) return classId._id.toString();
+        return classId.toString();
+    };
+
+    // 1. Fetch all scores for the branchYearId (for averages)
+    let allClassScores;
+    try {
+        allClassScores = await Score.find({ branchYearId });
+    } catch (err) {
+        console.error(err);
+        return next(new HttpError("Internal server error occurred!", 500));
+    }
+
+    // 2. Calculate averages for each classId (across all subBranchId)
+    const classAverages = {};
+    const materials = [
+        'reciting', 'writing', 'quranTafsir', 'hadithTafsir', 'practice',
+        'moralManner', 'memorizingSurah', 'memorizingHadith', 'memorizingDua',
+        'memorizingBeautifulName', 'knowledge', 'independence'
+    ];
+
+    // Group scores by classId
+    allClassScores.forEach(score => {
+        const cid = getClassIdString(score.classId)
+        if (!classAverages[cid]) classAverages[cid] = { scores: [] };
+        classAverages[cid].scores.push(score);
+    });
+
+    // Calculate averages for each classId
+    Object.keys(classAverages).forEach(cid => {
+        const scores = classAverages[cid].scores;
+        const averages = {};
+        materials.forEach(material => {
+            const values = scores
+                .map(s => s[material]?.score)
+                .filter(val => typeof val === 'number');
+            averages[material] = values.length
+                ? (values.reduce((a, b) => a + b, 0) / values.length)
+                : null;
+        });
+        classAverages[cid].averageScores = averages;
+    });
+
+    // 3. Fetch filtered scores (by branchYearId and subBranchId)
     let classes;
     try {
         classes = await Score.find({ branchYearId, subBranchId })
@@ -188,16 +234,16 @@ const getClassScoresByBranchYearId = async (req, res, next) => {
         return next(new HttpError("Teaching group year not found!", 404));
     }
 
-    // Group classes by classId
+    // Group classes by classId (filtered by subBranchId)
     const groupedClasses = classes.reduce((acc, curr) => {
-        const classId = curr.classId.toString();
-        if (!acc[classId]) {
-            acc[classId] = {
+        const cid = getClassIdString(curr.classId)
+        if (!acc[cid]) {
+            acc[cid] = {
                 classId: curr.classId,
                 scores: []
             };
         }
-        acc[classId].scores.push(curr);
+        acc[cid].scores.push(curr);
         return acc;
     }, {});
 
@@ -207,7 +253,8 @@ const getClassScoresByBranchYearId = async (req, res, next) => {
     res.json({
         classes: groupedClassesArray.map(group => ({
             classId: group.classId,
-            scores: group.scores.map(x => x.toObject({ getters: true }))
+            scores: group.scores.map(x => x.toObject({ getters: true })),
+            averageScores: classAverages[getClassIdString(group.classId)]?.averageScores || null
         }))
     });
 };
