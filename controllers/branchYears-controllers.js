@@ -131,7 +131,7 @@ const getBranchYearsByBranchIdForSubBranchId = async (req, res, next) => {
         }
 
         // 1. Find all BranchYear for the branchId
-        const branchYears = await BranchYear.find({ branchId });
+        const branchYears = await BranchYear.find({ branchId }).populate({ path: 'academicYearId', select: 'munaqasyahStatus' });
         if (!branchYears.length) {
             return res.json({ subBranchYears: [] });
         }
@@ -142,7 +142,7 @@ const getBranchYearsByBranchIdForSubBranchId = async (req, res, next) => {
             const teachingGroups = await TeachingGroup.find({
                 branchYearId: branchYear._id,
                 subBranches: subBranchId
-            });
+            })
 
             // 3. For each TeachingGroup, find Classes
             let classes = [];
