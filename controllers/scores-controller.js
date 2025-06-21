@@ -261,25 +261,34 @@ const getClassScoresByBranchYearId = async (req, res, next) => {
 
 const patchScoreById = async (req, res, next) => {
     const scoreId = req.params.scoreId;
-    const scoreData = req.body;
+    const scoreData = { ...req.body };
+
+    // Ensure __v is provided for concurrency control
+    if (typeof scoreData.__v !== 'number') {
+        return next(new HttpError('Version (__v) is required for concurrency control.', 400));
+    }
+
+    // Remove __v from scoreData to avoid conflict
+    const version = scoreData.__v;
+    delete scoreData.__v;
 
     let updatedScore;
     try {
-        updatedScore = await Score.findByIdAndUpdate(
-            scoreId,
-            scoreData,
+        updatedScore = await Score.findOneAndUpdate(
+            { _id: scoreId, __v: version }, // Only update if version matches
+            { ...scoreData, $inc: { __v: 1 } }, // Increment version
             { new: true }
         );
 
         if (!updatedScore) {
-            return next(new HttpError(`Score with ID ${scoreId} not found!`, 404));
+            return next(new HttpError('Konflik: Siswa ini sedang dinilai oleh munaqis lain! Mohon scan ulang.', 409));
         }
     } catch (error) {
         console.error(error);
         return next(new HttpError('Internal server error occurred while updating score!', 500));
     }
 
-    console.log(`Patchd score with ID ${scoreId}`);
+    console.log(`Patched score with ID ${scoreId}`);
     res.status(200).json({ score: updatedScore.toObject({ getters: true }) });
 };
 

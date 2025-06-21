@@ -12,9 +12,7 @@ const User = require('../models/user');
 const Branch = require('../models/branch')
 const SubBranch = require('../models/subBranch');
 const Student = require('../models/student');
-const TeachingGroup = require('../models/teachingGroup')
 const Teacher = require('../models/teacher')
-const NisCounter = require('../models/nisCounter');
 const AccountRequest = require('../models/accountRequest');
 
 
@@ -44,7 +42,7 @@ const getUsersById = async (req, res, next) => {
     let identifiedUsers;
     try {
         identifiedUsers = await User.findById(userId, "-password")
-            .populate({ path: 'teachingGroupId', select: 'name', populate: { path: 'branchId', select: 'name' } });
+            .populate({ path: 'subBranchId', select: 'name', populate: { path: 'branchId', select: 'name' } });
 
     } catch (err) {
         console.log(err)
@@ -70,7 +68,7 @@ const getRequestedAccountsByUserId = async (req, res, next) => {
         } else {
             console.log('looking tickets without userId')
             identifiedTickets = await AccountRequest.find()
-                .populate({ path: 'teachingGroupId', select: 'name', populate: { path: 'branchId', select: 'name' } })
+                .populate({ path: 'subBranchId', select: 'name', populate: { path: 'branchId', select: 'name' } })
                 .populate({ path: 'userId', select: 'name' })
         }
 
@@ -87,7 +85,7 @@ const getRequestedAccountsByTicketId = async (req, res, next) => {
 
     let identifiedTicket
     try {
-        identifiedTicket = await AccountRequest.find({ ticketId }, "-ticketId -userId -teachingGroupId -createdTime -status")
+        identifiedTicket = await AccountRequest.find({ ticketId }, "-ticketId -userId -subBranchId -createdTime -status")
     } catch (err) {
         console.log(err)
         return next(new HttpError("Internal server error occured!", 500))
@@ -318,7 +316,7 @@ const bulkCreateUsersAndStudents = async (req, res, next) => {
 };
 
 const requestAccounts = async (req, res, next) => {
-    const { teachingGroupId, accountList } = req.body;
+    const { subBranchId, accountList } = req.body;
     const createdTime = new Date();
 
     console.log(accountList);
@@ -327,7 +325,7 @@ const requestAccounts = async (req, res, next) => {
 
     const createRequest = new AccountRequest({
         userId: req.userData.userId,
-        teachingGroupId,
+        subBranchId,
         ticketId,
         createdTime,
         status: 'pending',
@@ -401,7 +399,7 @@ const createUser = async (req, res, next) => {
         password: hashedPassword,
         role,
         image: "",
-        subBranchId: subBranch._id, // Use the _id from the TeachingGroup document
+        subBranchId: subBranch._id, // Use the _id from the SubBranch document
     });
 
     let teacher;
@@ -566,17 +564,17 @@ const bulkDeleteUsers = async (req, res, next) => {
 //create an endpoint to update user's name, role, and subbranch.
 const updateUser = async (req, res, next) => {
     const userId = req.params.userId;
-    const { name, role, teachingGroupName } = req.body;
+    const { name, role, subBranchId } = req.body;
 
     let user;
-    let teachingGroup;
+    let subBranch;
 
     try {
         user = await User.findById(userId);
-        if (teachingGroupName) {
-            teachingGroup = await TeachingGroup.findOne({ name: teachingGroupName });
-            if (!teachingGroup) {
-                return next(new HttpError('TeachingGroup not found!', 404));
+        if (subBranchId) {
+            subBranch = await SubBranch.findOne({ name: subBranchId });
+            if (!subBranch) {
+                return next(new HttpError('subBranch not found!', 404));
             }
         }
     } catch (err) {
@@ -590,16 +588,16 @@ const updateUser = async (req, res, next) => {
 
     user.name = name || user.name;
     user.role = role || user.role;
-    if (teachingGroup) {
-        user.teachingGroupId = teachingGroup._id;
+    if (subBranch) {
+        user.subBranchId = subBranch._id;
     }
 
     try {
         await user.save();
-        res.json({ message: 'User updated successfully!', user: user.toObject({ getters: true }) });
+        res.json({ message: 'Berhasil memperbarui user!', user: user.toObject({ getters: true }) });
     } catch (err) {
         console.error(err);
-        return next(new HttpError('Failed to update user!', 500));
+        return next(new HttpError('Gagal memperbarui user!', 500));
     }
 };
 
