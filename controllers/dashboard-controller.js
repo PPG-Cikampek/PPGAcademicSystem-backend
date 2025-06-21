@@ -15,6 +15,10 @@ const SubBranch = require('../models/subBranch');
 const getDashboardData = async (req, res, next) => {
     const userRole = req.userData.userRole
     const userId = req.userData.userId
+    const branchId = req.userData.userBranchId
+
+
+    console.log(req.userData)
 
     try {
 
@@ -45,9 +49,9 @@ const getDashboardData = async (req, res, next) => {
             // Count attendance for students in this group
             const attendanceCount = await Attendance.countDocuments({ studentId: { $in: studentIds } });
 
-            const attendancePresentCount = await Attendance.countDocuments({ 
-                studentId: { $in: studentIds }, 
-                status: { $in: ['Hadir', 'Terlambat'] } 
+            const attendancePresentCount = await Attendance.countDocuments({
+                studentId: { $in: studentIds },
+                status: { $in: ['Hadir', 'Terlambat'] }
             });
 
             const attendancePercentage = attendanceCount === 0 ? 0 : (attendancePresentCount / attendanceCount * 100);
@@ -60,6 +64,42 @@ const getDashboardData = async (req, res, next) => {
             }
 
             console.log(dashboardData)
+        }
+
+        if (userRole === 'branchAdmin') {
+            // Get all sub-branches for this branch
+            const subBranches = await SubBranch.find({ branchId: branchId }).select('_id');
+            const subBranchIds = subBranches.map(sb => sb._id);
+
+            // Get all branchYears for these subBranches
+            const branchYears = await branchYear.find({ subBranchId: { $in: subBranchIds } }).select('_id');
+
+            // Get all users in these subBranches
+            const usersInBranch = await User.find({ subBranchId: { $in: subBranchIds } }).select('_id');
+            const userIdsInBranch = usersInBranch.map(u => u._id);
+
+            // Count students and teachers
+            const studentCount = await Student.countDocuments({ userId: { $in: userIdsInBranch } });
+            const teacherCount = await Teacher.countDocuments({ userId: { $in: userIdsInBranch } });
+
+            // Get all students' _id for attendance
+            const students = await Student.find({ userId: { $in: userIdsInBranch } }).select('_id');
+            const studentIds = students.map(s => s._id);
+
+            // Attendance stats
+            const attendanceCount = await Attendance.countDocuments({ studentId: { $in: studentIds } });
+            const attendancePresentCount = await Attendance.countDocuments({
+                studentId: { $in: studentIds },
+                status: { $in: ['Hadir', 'Terlambat'] }
+            });
+            const attendancePercentage = attendanceCount === 0 ? 0 : (attendancePresentCount / attendanceCount * 100);
+
+            dashboardData = {
+                "Kelompok": subBranchIds.length,
+                "Peserta Didik": studentCount,
+                "Tenaga Pendidik": teacherCount,
+                "Kehadiran": attendancePercentage
+            }
         }
 
         if (userRole === 'admin' || userRole === 'curriculum') {
