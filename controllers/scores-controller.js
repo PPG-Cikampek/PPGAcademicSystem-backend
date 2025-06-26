@@ -160,7 +160,7 @@ const getClassScoresByBranchYearId = async (req, res, next) => {
         return classId.toString();
     };
 
-    // 1. Fetch all scores for the branchYearId (for averages)
+    // 1. Fetch all scores for the branchYearId (for averages and ranking)
     let allClassScores;
     try {
         allClassScores = await Score.find({ branchYearId });
@@ -184,7 +184,7 @@ const getClassScoresByBranchYearId = async (req, res, next) => {
         classAverages[cid].scores.push(score);
     });
 
-    // Calculate averages for each classId
+    // Calculate averages for each classId (across all subBranchId)
     Object.keys(classAverages).forEach(cid => {
         const scores = classAverages[cid].scores;
         const averages = {};
@@ -193,16 +193,69 @@ const getClassScoresByBranchYearId = async (req, res, next) => {
                 .map(s => s[material]?.score)
                 .filter(val => typeof val === 'number');
             averages[material] = values.length
-                ? (values.reduce((a, b) => a + b, 0) / values.length)
-                : null;
+                ? Math.round(values.reduce((a, b) => a + b, 0) / values.length)
+                : null
         });
         classAverages[cid].averageScores = averages;
     });
 
-    // 3. Fetch filtered scores (by branchYearId and subBranchId)
+    // --- Calculate student ranking per classId ---
+    // For each class, calculate total score for each student, then rank
+    const classStudentRanks = {};
+    const classStudentTotals = {}; // <-- Add this to store total students per class
+    Object.keys(classAverages).forEach(cid => {
+        const scores = classAverages[cid].scores;
+        // Calculate total score for each student
+        const studentTotals = scores.map(s => {
+            let total = 0;
+            let count = 0;
+            materials.forEach(mat => {
+                if (typeof s[mat]?.score === 'number') {
+                    total += s[mat].score;
+                    count++;
+                }
+            });
+            return {
+                studentId: s.studentId.toString(),
+                scoreId: s._id.toString(),
+                total,
+                count
+            };
+        });
+        // Sort descending by total
+        studentTotals.sort((a, b) => b.total - a.total);
+        // Assign rank, handling ties
+        let lastTotal = null;
+        let lastRank = 0;
+        let sameRankCount = 0;
+        studentTotals.forEach((stu, idx) => {
+            if (stu.total === lastTotal) {
+                stu.rank = lastRank;
+                sameRankCount++;
+            } else {
+                stu.rank = idx + 1;
+                lastRank = stu.rank;
+                lastTotal = stu.total;
+                sameRankCount = 1;
+            }
+        });
+        // Map by scoreId for fast lookup
+        classStudentRanks[cid] = {};
+        studentTotals.forEach(stu => {
+            classStudentRanks[cid][stu.scoreId] = stu.rank;
+        });
+        // Store total students for this class
+        classStudentTotals[cid] = studentTotals.length;
+    });
+
+    // 3. Fetch filtered scores (by branchYearId and subBranchId if provided)
+    let scoreFilter = { branchYearId };
+    if (subBranchId) scoreFilter.subBranchId = subBranchId;
+    if (classId) scoreFilter.classId = classId;
+
     let classes;
     try {
-        classes = await Score.find({ branchYearId, subBranchId })
+        classes = await Score.find(scoreFilter)
             .populate({ path: 'classId', select: 'name' })
             .populate({ path: 'studentId', select: 'name' })
             .populate({
@@ -234,7 +287,7 @@ const getClassScoresByBranchYearId = async (req, res, next) => {
         return next(new HttpError("Teaching group year not found!", 404));
     }
 
-    // Group classes by classId (filtered by subBranchId)
+    // Group classes by classId (filtered by subBranchId if provided)
     const groupedClasses = classes.reduce((acc, curr) => {
         const cid = getClassIdString(curr.classId)
         if (!acc[cid]) {
@@ -253,7 +306,14 @@ const getClassScoresByBranchYearId = async (req, res, next) => {
     res.json({
         classes: groupedClassesArray.map(group => ({
             classId: group.classId,
-            scores: group.scores.map(x => x.toObject({ getters: true })),
+            scores: group.scores.map(x => {
+                const cid = getClassIdString(group.classId);
+                const scoreId = x._id.toString();
+                const obj = x.toObject({ getters: true });
+                obj.studentRank = classStudentRanks[cid]?.[scoreId] || null;
+                obj.studentTotal = classStudentTotals[cid] || null;
+                return obj;
+            }),
             averageScores: classAverages[getClassIdString(group.classId)]?.averageScores || null
         }))
     });
