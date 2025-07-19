@@ -80,20 +80,25 @@ const getClassById = async (req, res, next) => {
         if (populate === 'all') {
             identifiedClass = await Class.findById(classId)
                 .populate([
-                    { path: 'teachingGroupYearId', populate: { path: 'teachingGroupId', select: 'name' }, populate: { path: 'academicYearId' } },
-                    { path: 'attendances', select: 'forDate' }
+                    {
+                        path: 'teachingGroupId', select: ['name', 'branchYearId'],
+                        populate: { path: 'branchYearId', select: ['isActive', 'academicYearId'], populate: { path: 'academicYearId', select: 'isActive' } }
+                    },
+                    // { path: 'attendances', select: 'forDate' }
                 ])
-                .populate({ path: 'teachers' })
-                .populate({ path: 'students' })
-        } else if (populate === 'teachingGroupYear') {
+                .populate({ path: 'teachers', populate: { path: 'userId', select: 'subBranchId', populate: { path: 'subBranchId', select: 'name' } } })
+                .populate({ path: 'students', populate: { path: 'userId', select: 'subBranchId', populate: { path: 'subBranchId', select: 'name' } } })
+        } else if (populate === 'branchYear') {
             identifiedClass = await Class.findById(classId)
                 .populate([
-                    { path: 'teachingGroupYearId', select: ['isActive', 'academicYearId'], populate: { path: 'academicYearId', select: 'name' } },
-                    { path: 'attendances', select: 'forDate' }
+                    {
+                        path: 'teachingGroupId', select: ['name', 'branchYearId'],
+                        populate: { path: 'branchYearId', select: ['isActive', 'academicYearId'], populate: { path: 'academicYearId', select: 'isActive' } }
+                    },
                 ])
         } else {
             identifiedClass = await Class.findById(classId)
-                .populate({ path: 'attendances', select: 'forDate' })
+            // .populate({ path: 'attendances', select: 'forDate' })
         }
     } catch (err) {
         console.error(err);
@@ -134,6 +139,7 @@ const getClassAttendanceByIdAndStudentId = async (req, res, next) => {
 
 const getClassesByIds = async (req, res, next) => {
     const classIds = req.body.classIds; // Assuming classIds are sent in the request body as an array
+    console.log(classIds)
 
     if (!Array.isArray(classIds) || classIds.length === 0) {
         return next(new HttpError("Invalid input. Please provide a list of class IDs.", 400));
@@ -142,8 +148,8 @@ const getClassesByIds = async (req, res, next) => {
     let identifiedClasses;
     try {
         identifiedClasses = await Class.find({ _id: { $in: classIds } })
-            .populate({ path: 'teachingGroupYearId', populate: { path: 'academicYearId', select: ['name', 'isActive'] } })
-            .populate({ path: 'attendances', select: 'forDate' })
+            .populate({ path: 'teachingGroupId', populate: { path: 'branchYearId', populate: { path: 'academicYearId', select: ['name', 'isActive'] } } })
+        // .populate({ path: 'attendances', select: 'forDate' })
         // .populate({ path: 'teachers' })
         // .populate({ path: 'students' });
     } catch (err) {
@@ -168,14 +174,14 @@ const getClassesByTeachingGroupId = async (req, res, next) => {
 
     try {
         classes = await Class.find().populate([
-            { path: 'teachingGroupYearId', select: 'teachingGroupId' },
-            { path: 'attendances', select: 'forDate' }
+            { path: 'teachingGroupId' },
+            // { path: 'attendances', select: 'forDate' }
         ]);
 
-        console.log(teachingGroupId)
+        // console.log('before filter', classes)
         console.log(classes)
-        // Filter classes manually
-        classes = classes.filter(cls => cls.teachingGroupYearId.teachingGroupId.toString() === teachingGroupId);
+        classes = classes.filter(cls => cls.teachingGroupId._id === teachingGroupId);
+        // console.log('after filter', classes)
     } catch (err) {
         console.error(err);
         return next(new HttpError("Internal server error occurred!", 500));
@@ -201,36 +207,36 @@ const getClassesByTeachingGroupYearId = async (req, res, next) => {
 }
 
 const createClass = async (req, res, next) => {
-    const { name, startTime, teachingGroupYearId } = req.body
+    const { name, startTime, endTime, teachingGroupId } = req.body
 
-    let identifiedTeachingGroupYear;
+    let identifiedTeachingGroup;
     try {
-        identifiedTeachingGroupYear = await TeachingGroupYear.findById(teachingGroupYearId)
+        identifiedTeachingGroup = await TeachingGroup.findById(teachingGroupId)
     } catch (err) {
         console.log(err);
         return next(new HttpError('Internal server error!', 500));
     }
 
-    if (!identifiedTeachingGroupYear) {
+    if (!identifiedTeachingGroup) {
         return next(new HttpError('Tahun ajaran belum terdaftar di Kelompok ini!', 500));
     }
 
     const createdClass = new Class({
         name,
         startTime,
+        endTime,
         isLocked: false,
         teachers: [],
         students: [],
-        attendances: [],
-        teachingGroupYearId,
+        teachingGroupId: identifiedTeachingGroup._id
     })
 
     try {
         const sess = await mongoose.startSession();
         sess.startTransaction()
         await createdClass.save({ session: sess });
-        identifiedTeachingGroupYear.classes.push(createdClass);
-        await identifiedTeachingGroupYear.save({ session: sess });
+        identifiedTeachingGroup.classes.push(createdClass);
+        await identifiedTeachingGroup.save({ session: sess });
         await sess.commitTransaction();
     } catch (err) {
         console.log(err);
@@ -292,7 +298,6 @@ const deleteClass = async (req, res, next) => {
 const registerStudentToClass = async (req, res, next) => {
     const { classId, studentId } = req.body;
 
-    // Finding relevant subbranch and academic year
     let existingClass;
     let existingStudent;
     try {
@@ -310,17 +315,26 @@ const registerStudentToClass = async (req, res, next) => {
         return next(new HttpError('Peserta tidak ditemukan!', 500));
     }
 
-    const isStudentEnrolled = existingClass.students.some(student => student.toString() === studentId);
+    // Check if student is already enrolled in any class in the same teaching group
+    const studentClassIds = existingStudent.classIds || [];
+    if (studentClassIds.length > 0) {
+        const studentClasses = await Class.find({ _id: { $in: studentClassIds } });
+        const isInSameTeachingGroup = studentClasses.some(cls =>
+            cls.teachingGroupId.toString() === existingClass.teachingGroupId.toString()
+        );
+        if (isInSameTeachingGroup) {
+            return next(new HttpError('Peserta didik sudah terdaftar di kelas lain dalam KBM ini!', 500));
+        }
+    }
 
+    const isStudentEnrolled = existingClass.students.some(student => student.toString() === studentId);
     if (isStudentEnrolled) {
         return next(new HttpError('Peserta didik sudah terdaftar di kelas ini!', 500));
     }
 
-
     try {
         const sess = await mongoose.startSession();
         sess.startTransaction()
-        // await createdTeachingGroupYear.save({ session: sess });
         existingStudent.classIds.push(existingClass);
         existingClass.students.push(existingStudent);
         await existingStudent.save({ session: sess });

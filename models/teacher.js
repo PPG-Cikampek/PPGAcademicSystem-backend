@@ -20,6 +20,9 @@ const teacherSchema = new Schema({
     classIds: [{ type: mongoose.Types.ObjectId, required: false, ref: 'Class' }],
 });
 
+// Indexes for better query performance
+teacherSchema.index({ userId: 1 }); // Frequent query by userId
+
 
 module.exports = mongoose.model('Teacher', teacherSchema);
 

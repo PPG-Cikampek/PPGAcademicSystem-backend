@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 
 const User = require('../models/user');
 const Branch = require('../models/branch');
+const BranchYear = require('../models/branchYear');
 const TeachingGroup = require('../models/teachingGroup');
 const AcademicYear = require('../models/academicYear')
 const Class = require('../models/class')
@@ -17,8 +18,8 @@ const getAcademicYears = async (req, res, next) => {
         if (populate) {
             academicYears = await AcademicYear.find()
                 .populate({
-                    path: 'teachingGroupYears',
-                    populate: { path: 'teachingGroupId', select: 'name' },
+                    path: 'branchYears',
+                    populate: { path: 'branchId', select: 'name' },
                     // populate: { path: 'classes', select: 'name' }
                 })
                 .sort({ name: -1 });
@@ -69,7 +70,7 @@ const getMunaqasyahPackages = async (req, res, next) => {
     }
 
     console.log('Munaqasyah Packages requested');
-    res.status(200).json({ 
+    res.status(200).json({
         packages: academicYears.map(year => {
             const yearObj = year.toObject({ getters: true });
             // Spread munaqasyah properties to root level
@@ -123,7 +124,7 @@ const createAcademicYear = async (req, res, next) => {
     const createdAcademicYear = new AcademicYear({
         name,
         isActive: false,
-        isMunaqasyahActive: false,
+        munaqasyahStatus: 'notStarted',
         teachingGroupYears: []
     })
 
@@ -145,7 +146,7 @@ const activateAcademicYear = async (req, res, next) => {
     // Check if the provided ID exists
     let targetAcademicYear;
     try {
-        targetAcademicYear = await AcademicYear.findById(id).populate('teachingGroupYears');
+        targetAcademicYear = await AcademicYear.findById(id).populate('branchYears');
     } catch (err) {
         console.log(err);
         return next(new HttpError('Internal server error!', 500));
@@ -161,7 +162,7 @@ const activateAcademicYear = async (req, res, next) => {
         await AcademicYear.updateMany({}, { $set: { isActive: false } });
 
         // Set isActive = false for all teachingGroupYears in every academic year
-        await TeachingGroupYear.updateMany({}, { $set: { isActive: false } });
+        await BranchYear.updateMany({}, { $set: { isActive: false } });
 
     } catch (err) {
         console.log(err);
@@ -218,25 +219,31 @@ const updateAcademicYear = async (req, res, next) => {
     res.status(200).json({ message: 'Berhasil mengubah kelompok ajar!', academicYear: academicYear.toObject({ getters: true }) });
 }
 
-const startAcademicYearMunaqasyah = async (req, res, next) => {
+const patchAcademicYearMunaqasyahStatus = async (req, res, next) => {
     const academicYearId = req.params.academicYearId;
-    const { isMunaqasyahActive } = req.body;
+    const { munaqasyahStatus } = req.body;
 
     let existingAcademicYear;
     try {
-        existingAcademicYear = await AcademicYear.findOneAndUpdate(
-            { _id: academicYearId },
-            { isMunaqasyahActive },
-            { new: true }
-        );
-
+        // Fetch the academic year and populate branchYears
+        existingAcademicYear = await AcademicYear.findById(academicYearId).populate('branchYears');
         if (!existingAcademicYear) {
             return next(new HttpError("Tahun Ajaran tidak ditemukan!", 404));
         }
 
-        console.log(`Started munaqosyah for AcademicYearwith id ${academicYearId}`);
+        // Check if any branchYear has munaqasyahStatus === 'inProgress'
+        const hasInProgress = (existingAcademicYear.branchYears || []).some(by => by.munaqasyahStatus === 'inProgress');
+        if (hasInProgress) {
+            return next(new HttpError("Terdapat desa yang belum selesai munaqosah!", 400));
+        }
+
+        // Update munaqasyahStatus
+        existingAcademicYear.munaqasyahStatus = munaqasyahStatus;
+        await existingAcademicYear.save();
+
+        console.log(`patched munaqosyahStatus for AcademicYearwith id ${academicYearId}`);
         res.json({
-            message: "Munaqosah dimulai!",
+            message: munaqasyahStatus === 'inProgress' ? 'Munaqosah dimulai!' : 'Munaqasyah selesai!',
             question: existingAcademicYear.toObject({ getters: true })
         });
 
@@ -284,6 +291,6 @@ exports.createAcademicYear = createAcademicYear;
 exports.activateAcademicYear = activateAcademicYear;
 
 exports.updateAcademicYear = updateAcademicYear
-exports.startAcademicYearMunaqasyah = startAcademicYearMunaqasyah
+exports.patchAcademicYearMunaqasyahStatus = patchAcademicYearMunaqasyahStatus
 exports.deleteAcademicYear = deleteAcademicYear
 

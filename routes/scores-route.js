@@ -8,9 +8,8 @@ const router = express.Router();
 router.get('/', checkAuth, scoreController.getScore);
 router.get('/student/:scoreId', scoreController.getScoreById);
 
-router.get('/teachingGroupYear/:teachingGroupYearId', scoreController.getClassesByTeachingGroupYearId);
-// router.get('/classes/:teachingGroupYearId', scoreController.getClassesByTeachingGroupYearId);
-
+router.get('/sub-branch/:subBranchId', checkAuth, scoreController.getClassScoresBySubBranchId);
+router.get('/branch-year/:branchYearId', checkAuth, scoreController.getClassScoresByBranchYearId);
 
 
 router.patch('/:scoreId', checkAuth, scoreController.patchScoreById);

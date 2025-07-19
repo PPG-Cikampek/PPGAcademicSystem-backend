@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 
 const User = require('../models/user');
 const Branch = require('../models/branch');
+const SubBranch = require('../models/subBranch');
 const TeachingGroup = require('../models/teachingGroup');
 const AcademicYear = require('../models/academicYear')
 const Class = require('../models/class')
@@ -13,7 +14,7 @@ const getTeachers = async (req, res, next) => {
     let teachers;
     try {
         teachers = await Teacher.find()
-            .populate({ path: 'userId', select: 'teachingGroupId', populate: { path: 'teachingGroupId', select: 'name', populate: { path: 'branchId', select: 'name' } } });
+            .populate({ path: 'userId', select: 'subBranchId', populate: { path: 'subBranchId', select: 'name', populate: { path: 'branchId', select: 'name' } } });
 
     } catch (err) {
         console.error(err);
@@ -24,12 +25,51 @@ const getTeachers = async (req, res, next) => {
     res.json({ teachers: teachers.map(x => x.toObject({ getters: true })) });
 }
 
-const getTeachersByTeachingGroupId = async (req, res, next) => {
-    const teachingGroupId = req.params.teachingGroupId;
+const getTeachersByBranchId = async (req, res, next) => {
+    const branchId = req.params.branchId;
+
+    let teachers;
+    try {
+        // 1. Find subBranches with the given branchId
+        const subBranches = await SubBranch.find({ branchId: branchId });
+        const subBranchIds = subBranches.map(sb => sb._id);
+
+        // 2. Find users with subBranchId in subBranchIds
+        const users = await User.find({ subBranchId: { $in: subBranchIds } });
+
+        // 3. Extract user IDs
+        const userIds = users.map(user => user._id);
+
+        // 4. Find teachers based on user IDs
+        teachers = await Teacher.find({ userId: { $in: userIds } })
+            .populate({
+                path: 'userId',
+                select: 'subBranchId',
+                populate: {
+                    path: 'subBranchId',
+                    select: 'name',
+                    populate: {
+                        path: 'branchId',
+                        select: 'name'
+                    }
+                }
+            })
+            .sort({ nis: 1 })
+
+    } catch (err) {
+        console.log(err)
+        return next(new HttpError("Internal server error occured!", 500))
+    }
+    console.log('Get teachers by branch ID requested')
+    res.json({ teachers })
+};
+
+const getTeachersBySubBranchId = async (req, res, next) => {
+    const subBranchId = req.params.subBranchId;
     let teachers;
     try {
         // 1. Find matching users
-        const users = await User.find({ teachingGroupId: teachingGroupId });
+        const users = await User.find({ subBranchId: subBranchId });
 
         // 2. Extract User IDs
         const userIds = users.map(user => user._id);
@@ -38,9 +78,9 @@ const getTeachersByTeachingGroupId = async (req, res, next) => {
         teachers = await Teacher.find({ userId: { $in: userIds } })
             .populate({
                 path: 'userId',
-                select: 'teachingGroupId',
+                select: 'subBranchId',
                 populate: {
-                    path: 'teachingGroupId',
+                    path: 'subBranchId',
                     select: 'name',
                     populate: {
                         path: 'branchId',
@@ -66,10 +106,10 @@ const getTeacherById = async (req, res, next) => {
 
     try {
         teacher = await Teacher.findById(teacherId)
-            .populate({ path: 'userId', select: 'teachingGroupId', populate: { path: 'teachingGroupId', select: 'name', populate: { path: 'branchId', select: 'name' } } })
+            .populate({ path: 'userId', select: 'subBranchId', populate: { path: 'subBranchId', select: 'name', populate: { path: 'branchId', select: 'name' } } })
             .populate({
                 path: 'classIds',
-                populate: { path: 'teachingGroupYearId' }
+                populate: { path: 'teachingGroupId' }
             })
     } catch (err) {
         console.error(err);
@@ -87,12 +127,12 @@ const getTeacherByUserId = async (req, res, next) => {
 
     try {
         teacher = await Teacher.findOne({ userId })
-            .populate({ path: 'userId', select: 'teachingGroupId', populate: { path: 'teachingGroupId', select: 'name', populate: { path: 'branchId', select: 'name' } } })
+            .populate({ path: 'userId', select: 'subBranchId', populate: { path: 'subBranchId', select: 'name', populate: { path: 'branchId', select: 'name' } } })
             .populate({
                 path: 'classIds',
                 populate: [
-                    { path: 'teachingGroupYearId', populate: { path: 'academicYearId', select: ['name', 'isActive'] } },
-                    { path: 'attendances', select: 'forDate' }
+                    { path: 'teachingGroupId', populate: { path: 'branchYearId', populate: { path: 'academicYearId', select: ['name', 'isActive'] } } },
+                    // { path: 'attendances', select: 'forDate' }
                 ]
             });
     } catch (err) {
@@ -158,7 +198,8 @@ const updateTeacher = async (req, res, next) => {
 }
 
 
-exports.getTeachersByTeachingGroupId = getTeachersByTeachingGroupId
+exports.getTeachersByBranchId = getTeachersByBranchId
+exports.getTeachersBySubBranchId = getTeachersBySubBranchId
 exports.getTeacherByUserId = getTeacherByUserId
 exports.getTeacherById = getTeacherById
 exports.getTeachers = getTeachers

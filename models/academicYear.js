@@ -5,7 +5,7 @@ const Schema = mongoose.Schema;
 const academicYearSchema = new Schema({
     name: { type: String, required: true, unique: true },
     isActive: { type: Boolean, required: true },
-    isMunaqasyahActive: { type: Boolean, required: true },
+    munaqasyahStatus: { type: String, required: true },
     munaqasyah: {
         reciting: { type: Number, required: false },
         writing: { type: Number, required: false },
@@ -20,9 +20,10 @@ const academicYearSchema = new Schema({
         knowledge: { type: Number, required: false },
         independence: { type: Number, required: false }
     },
-    teachingGroupYears: [{ type: mongoose.Types.ObjectId, required: true, ref: 'TeachingGroupYear' }]
+    branchYears: [{ type: mongoose.Types.ObjectId, required: true, ref: 'BranchYear' }]
 });
 
+academicYearSchema.index({ 'branchYears': 1 }); // Frequent query by branchYears
 
 module.exports = mongoose.model('AcademicYear', academicYearSchema);
 

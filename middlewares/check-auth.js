@@ -9,8 +9,10 @@ module.exports = (req, res, next) => {
         }
 
         const decodedToken = jwt.verify(token, process.env.JWT_KEY);
-        
-        req.userData = { userId: decodedToken.userId, userRole: decodedToken.role };
+
+        console.log(decodedToken)
+
+        req.userData = { userId: decodedToken.userId, userRole: decodedToken.role, userBranchId: decodedToken.userBranchId };
         next()
     } catch (err) {
         console.log()

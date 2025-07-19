@@ -9,7 +9,8 @@ router.get('/', studentsController.getStudents);
 router.get('/:studentId', studentsController.getStudentById);
 router.get('/login/:nis', studentsController.getStudentByNis);
 router.get('/user/:userId', studentsController.getStudentByUserId)
-router.get('/teaching-group/:teachingGroupId', studentsController.getStudentsByTeachingGroupId);
+router.get('/branch/:branchId', studentsController.getStudentsByBranchId);
+router.get('/sub-branch/:subBranchId', studentsController.getStudentsBySubBranchId);
 // router.get('/teachingGroupYear/:teachingGroupYearId', classController.getClassesByTeachingGroupYearId);
 
 // // router.get('/:userId', usersController.getUsersById);
@@ -18,7 +19,7 @@ router.post('/', studentsController.createStudent);
 
 router.patch('/:studentId', fileUpload.single('image'), studentsController.updateStudent);
 
-// router.post('/teachingGroup', levelsController.createTeachingGroup);
+// router.post('/teachingGroup', levelsController.createSubBranch);
 
 
 // // router.post('/signup', usersController.signup);

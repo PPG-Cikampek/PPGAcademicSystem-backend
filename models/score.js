@@ -6,9 +6,10 @@ const scoreSchema = new Schema({
     userId: { type: mongoose.Types.ObjectId, required: true, ref: 'User' },
     studentId: { type: mongoose.Types.ObjectId, required: true, ref: 'Student' },
     studentNis: { type: Number, required: true },
-    teachingGroupYearId: { type: mongoose.Types.ObjectId, required: true, ref: 'TeachingGroupYear' },
+    branchYearId: { type: mongoose.Types.ObjectId, required: true, ref: 'BranchYear' },
+    subBranchId: { type: mongoose.Types.ObjectId, required: true, ref: 'SubBranch' },
+    teachingGroupId: { type: mongoose.Types.ObjectId, required: true, ref: 'TeachingGroup' },
     classId: { type: mongoose.Types.ObjectId, required: true, ref: 'Class' },
-    isBeingScored: { type: String, required: true, default: false },
     reciting: {
         score: { type: Number, required: true },
         examinerUserId: { type: mongoose.Types.ObjectId, required: false, ref: 'User' },

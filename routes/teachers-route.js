@@ -7,7 +7,8 @@ const router = express.Router();
 
 router.get('/', teachersController.getTeachers)
 router.get('/:teacherId', teachersController.getTeacherById)
-router.get('/teaching-group/:teachingGroupId', teachersController.getTeachersByTeachingGroupId)
+router.get('/branch/:branchId', teachersController.getTeachersByBranchId)
+router.get('/sub-branch/:subBranchId', teachersController.getTeachersBySubBranchId)
 router.get('/user/:userId', teachersController.getTeacherByUserId)
 
 // router.post('/signup', usersController.signup);

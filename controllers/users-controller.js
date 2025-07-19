@@ -10,10 +10,9 @@ const { v1: uuidv1 } = require('uuid')
 
 const User = require('../models/user');
 const Branch = require('../models/branch')
+const SubBranch = require('../models/subBranch');
 const Student = require('../models/student');
-const TeachingGroup = require('../models/teachingGroup')
 const Teacher = require('../models/teacher')
-const NisCounter = require('../models/nisCounter');
 const AccountRequest = require('../models/accountRequest');
 
 
@@ -24,10 +23,10 @@ const getUsers = async (req, res, next) => {
     try {
         if (role === 'student') {
             identifiedUsers = await User.find({ role }, "-password")
-                .populate({ path: 'teachingGroupId', select: 'name', populate: { path: 'branchId', select: 'name' } });
+                .populate({ path: 'subBranchId', select: 'name', populate: { path: 'branchId', select: 'name' } });
         } else {
             identifiedUsers = await User.find({}, "-password")
-                .populate({ path: 'teachingGroupId', select: 'name', populate: { path: 'branchId', select: 'name' } });
+                .populate({ path: 'subBranchId', select: 'name', populate: { path: 'branchId', select: 'name' } });
         }
     } catch (err) {
         console.log(err)
@@ -43,7 +42,7 @@ const getUsersById = async (req, res, next) => {
     let identifiedUsers;
     try {
         identifiedUsers = await User.findById(userId, "-password")
-            .populate({ path: 'teachingGroupId', select: 'name', populate: { path: 'branchId', select: 'name' } });
+            .populate({ path: 'subBranchId', select: 'name', populate: { path: 'branchId', select: 'name' } });
 
     } catch (err) {
         console.log(err)
@@ -69,7 +68,7 @@ const getRequestedAccountsByUserId = async (req, res, next) => {
         } else {
             console.log('looking tickets without userId')
             identifiedTickets = await AccountRequest.find()
-                .populate({ path: 'teachingGroupId', select: 'name', populate: { path: 'branchId', select: 'name' } })
+                .populate({ path: 'subBranchId', select: 'name', populate: { path: 'branchId', select: 'name' } })
                 .populate({ path: 'userId', select: 'name' })
         }
 
@@ -86,7 +85,7 @@ const getRequestedAccountsByTicketId = async (req, res, next) => {
 
     let identifiedTicket
     try {
-        identifiedTicket = await AccountRequest.find({ ticketId }, "-ticketId -userId -teachingGroupId -createdTime -status")
+        identifiedTicket = await AccountRequest.find({ ticketId }, "-ticketId -userId -subBranchId -createdTime -status")
     } catch (err) {
         console.log(err)
         return next(new HttpError("Internal server error occured!", 500))
@@ -142,11 +141,11 @@ const login = async (req, res, next) => {
     try {
         if (email) {
             existingUser = await User.findOne({ email: email })
-                .populate({ path: 'teachingGroupId', select: 'name', populate: { path: 'branchId', select: 'name' } });
+                .populate({ path: 'subBranchId', select: 'name', populate: { path: 'branchId', select: 'name' } });
         } else if (nis) {
             const student = await Student.findOne({ nis: nis }).populate({
                 path: 'userId',
-                populate: { path: 'teachingGroupId', select: 'name', populate: { path: 'branchId', select: 'name' } }
+                populate: { path: 'subBranchId', select: 'name', populate: { path: 'branchId', select: 'name' } }
             });
             existingUser = student ? student.userId : null;
         }
@@ -172,7 +171,7 @@ const login = async (req, res, next) => {
 
     let token;
     token = jwt.sign(
-        { userId: existingUser.id, email: existingUser.email, role: existingUser.role, userName: existingUser.name },
+        { userId: existingUser.id, email: existingUser.email, role: existingUser.role, userName: existingUser.name, userSubBranchId: existingUser.subBranchId._id, userBranchId: existingUser.subBranchId.branchId._id },
         process.env.JWT_KEY,
         { expiresIn: '3h' }
     );
@@ -185,7 +184,7 @@ const login = async (req, res, next) => {
 };
 
 const bulkCreateUsersAndStudents = async (req, res, next) => {
-    const { year, count, teachingGroupId, role } = req.body;
+    const { year, count, subBranchId, role } = req.body;
 
     console.log(req.body)
 
@@ -204,15 +203,15 @@ const bulkCreateUsersAndStudents = async (req, res, next) => {
         currentYear = new Date().getFullYear();
     }
 
-    let teachingGroup;
+    let subBranch;
     try {
-        teachingGroup = await TeachingGroup.findById(teachingGroupId);
+        subBranch = await SubBranch.findById(subBranchId);
     } catch (err) {
-        return next(new HttpError('TeachingGroup lookup failed!', 500));
+        return next(new HttpError('subBranch lookup failed!', 500));
     }
 
-    if (!teachingGroup) {
-        return next(new HttpError('TeachingGroup not found!', 404));
+    if (!subBranch) {
+        return next(new HttpError('subBranch not found!', 404));
     }
 
     // Restrict NIS logic to only 4 digits: 0010 - 9999
@@ -270,7 +269,7 @@ const bulkCreateUsersAndStudents = async (req, res, next) => {
             password: hashedPassword, // Default password
             role,
             image: '',
-            teachingGroupId: teachingGroup._id,
+            subBranchId: subBranch._id,
         };
 
         const newStudent = {
@@ -281,6 +280,7 @@ const bulkCreateUsersAndStudents = async (req, res, next) => {
             gender: '',
             parentName: '',
             address: '',
+            isInternal: true, // Assuming all bulk-created students are internal
             image: '',
             isActive: true,
             isProfileComplete: false,
@@ -316,7 +316,7 @@ const bulkCreateUsersAndStudents = async (req, res, next) => {
 };
 
 const requestAccounts = async (req, res, next) => {
-    const { teachingGroupId, accountList } = req.body;
+    const { subBranchId, accountList } = req.body;
     const createdTime = new Date();
 
     console.log(accountList);
@@ -325,7 +325,7 @@ const requestAccounts = async (req, res, next) => {
 
     const createRequest = new AccountRequest({
         userId: req.userData.userId,
-        teachingGroupId,
+        subBranchId,
         ticketId,
         createdTime,
         status: 'pending',
@@ -343,7 +343,16 @@ const requestAccounts = async (req, res, next) => {
 
 
 const createUser = async (req, res, next) => {
-    const { name, email, password, role, teachingGroupId, teacherDetails } = req.body;
+    const { name, email, password, role, subBranchId, teacherDetails } = req.body;
+
+    const normalizeName = (name) => {
+        return name
+            .split(' ')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+            .join(' ');
+    };
+
+    const normalizedName = normalizeName(name);
 
     if (req.userData.userRole !== 'admin') {
         return next(new HttpError('Unauthorized', 401));
@@ -362,16 +371,16 @@ const createUser = async (req, res, next) => {
         return next(new HttpError('Email sudah digunakan!', 422));
     }
 
-    let teachingGroup;
+    let subBranch;
     try {
-        teachingGroup = await TeachingGroup.findById(teachingGroupId);
+        subBranch = await SubBranch.findById(subBranchId);
     } catch (err) {
         console.log("ada EERRORR")
         console.log(err)
         return next(new HttpError(err ? err : 'Kelompok tidak ditemukan!', 500));
     }
 
-    if (!teachingGroup) {
+    if (!subBranch) {
         return next(new HttpError('Kelompok tidak ditemukan!', 404));
     }
 
@@ -385,12 +394,12 @@ const createUser = async (req, res, next) => {
 
     // Create the new user
     const newUser = new User({
-        name,
+        name: normalizedName,
         email,
         password: hashedPassword,
         role,
         image: "",
-        teachingGroupId: teachingGroup._id, // Use the _id from the TeachingGroup document
+        subBranchId: subBranch._id, // Use the _id from the SubBranch document
     });
 
     let teacher;
@@ -399,7 +408,7 @@ const createUser = async (req, res, next) => {
         console.log(nig)
         teacher = new Teacher({
             userId: newUser._id, // Reference to the new user's ID
-            name,
+            name: normalizedName,
             nig,
             phone: "",
             position,
@@ -555,17 +564,17 @@ const bulkDeleteUsers = async (req, res, next) => {
 //create an endpoint to update user's name, role, and subbranch.
 const updateUser = async (req, res, next) => {
     const userId = req.params.userId;
-    const { name, role, teachingGroupName } = req.body;
+    const { name, role, subBranchId } = req.body;
 
     let user;
-    let teachingGroup;
+    let subBranch;
 
     try {
         user = await User.findById(userId);
-        if (teachingGroupName) {
-            teachingGroup = await TeachingGroup.findOne({ name: teachingGroupName });
-            if (!teachingGroup) {
-                return next(new HttpError('TeachingGroup not found!', 404));
+        if (subBranchId) {
+            subBranch = await SubBranch.findOne({ name: subBranchId });
+            if (!subBranch) {
+                return next(new HttpError('subBranch not found!', 404));
             }
         }
     } catch (err) {
@@ -579,16 +588,16 @@ const updateUser = async (req, res, next) => {
 
     user.name = name || user.name;
     user.role = role || user.role;
-    if (teachingGroup) {
-        user.teachingGroupId = teachingGroup._id;
+    if (subBranch) {
+        user.subBranchId = subBranch._id;
     }
 
     try {
         await user.save();
-        res.json({ message: 'User updated successfully!', user: user.toObject({ getters: true }) });
+        res.json({ message: 'Berhasil memperbarui user!', user: user.toObject({ getters: true }) });
     } catch (err) {
         console.error(err);
-        return next(new HttpError('Failed to update user!', 500));
+        return next(new HttpError('Gagal memperbarui user!', 500));
     }
 };
 
