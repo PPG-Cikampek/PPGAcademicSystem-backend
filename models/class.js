@@ -12,6 +12,9 @@ const classSchema = new Schema({
     teachingGroupId: { type: mongoose.Types.ObjectId, required: true, ref: 'TeachingGroup' },
 });
 
+// Indexes for better query performance
+classSchema.index({ teachingGroupId: 1 }); // Frequent query by teachingGroupId
+
 
 module.exports = mongoose.model('Class', classSchema);
 

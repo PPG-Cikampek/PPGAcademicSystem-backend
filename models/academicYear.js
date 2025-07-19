@@ -23,6 +23,7 @@ const academicYearSchema = new Schema({
     branchYears: [{ type: mongoose.Types.ObjectId, required: true, ref: 'BranchYear' }]
 });
 
+academicYearSchema.index({ 'branchYears': 1 }); // Frequent query by branchYears
 
 module.exports = mongoose.model('AcademicYear', academicYearSchema);
 

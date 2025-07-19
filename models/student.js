@@ -19,6 +19,9 @@ const studentSchema = new Schema({
     classIds: [{ type: mongoose.Types.ObjectId, required: false, ref: 'Class' }],
 });
 
+// Indexes for better query performance
+studentSchema.index({ userId: 1 }); // Frequent query by userId
+
 
 module.exports = mongoose.model('Student', studentSchema);
 
