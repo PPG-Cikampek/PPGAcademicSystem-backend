@@ -5,7 +5,7 @@ const Schema = mongoose.Schema;
 
 const accountRequestSchema = new Schema({
     userId: { type: mongoose.Types.ObjectId, required: true, ref: 'User' },
-    teachingGroupId: { type: mongoose.Types.ObjectId, required: true, ref: 'TeachingGroup' },
+    subBranchId: { type: mongoose.Types.ObjectId, required: true, ref: 'SubBranch' },
     ticketId: { type: String, required: true },
     createdTime: { type: Date, required: true },
     status: { type: String, required: true },

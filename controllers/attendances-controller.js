@@ -68,7 +68,7 @@ const getAttendancesByAcademicYearId = async (req, res, next) => {
 
 const createNewAttendanceForClass = async (req, res, next) => {
     console.log('createNewAttendanceForClass requested')
-    const { classId } = req.body;
+    const { classId, branchId, branchYearId, subBranchId } = req.body;
 
     let identifiedClass;
     try {
@@ -101,6 +101,10 @@ const createNewAttendanceForClass = async (req, res, next) => {
                 violations: { attribute: false, attitude: false, tidiness: false },
                 teachersNotes: "",
                 studentId,
+                branchId,
+                branchYearId,
+                subBranchId,
+                teachingGroupId: identifiedClass.teachingGroupId,
                 classId,
             });
 
@@ -108,20 +112,20 @@ const createNewAttendanceForClass = async (req, res, next) => {
             attendances.push(createdAttendance);
 
             // Step 2: Update the respective student document with the created attendance ID
-            await Student.findByIdAndUpdate(
-                studentId,
-                { $push: { attendanceIds: createdAttendance._id } },
-                { session }
-            );
+            // await Student.findByIdAndUpdate(
+            //     studentId,
+            //     { $push: { attendanceIds: createdAttendance._id } },
+            //     { session }
+            // );
         }
 
         // Step 3: Update class schema with all attendance references
-        const attendanceIds = attendances.map(attendance => attendance._id);
-        await Class.findByIdAndUpdate(
-            classId,
-            { $push: { attendances: { $each: attendanceIds } } },
-            { session }
-        );
+        // const attendanceIds = attendances.map(attendance => attendance._id);
+        // await Class.findByIdAndUpdate(
+        //     classId,
+        //     { $push: { attendances: { $each: attendanceIds } } },
+        //     { session }
+        // );
 
         // Commit the transaction
         await session.commitTransaction();
