@@ -6,12 +6,13 @@ const attendanceSchema = new Schema({
     studentId: { type: mongoose.Types.ObjectId, required: true, ref: 'Student' },
     forDate: { type: Date, required: true },
     timestamp: { type: Date, required: true },
+    branchYearId: { type: mongoose.Types.ObjectId, required: true, ref: 'BranchYear' },
     branchId: { type: mongoose.Types.ObjectId, required: true, ref: 'Branch' },
     subBranchId: { type: mongoose.Types.ObjectId, required: true, ref: 'SubBranch' },
     teachingGroupId: { type: mongoose.Types.ObjectId, required: true, ref: 'TeachingGroup' },
     classId: { type: mongoose.Types.ObjectId, required: true, ref: 'Class' },
-    status: { type: String, required: true },
-    violations: { type: Object, required: true },
+    status: { type: String, required: true }, // Enum = Hadir, Izin, Sakit, Tanpa Keterangan
+    violations: { type: Object, required: true }, // Object = {{attribute: boolean}, {attitude: boolean}, {tidiness: boolean}}
     updateReason: { type: String, required: false },
     teachersNotes: { type: String, required: false },
 });
@@ -19,6 +20,7 @@ const attendanceSchema = new Schema({
 // Indexes for better query performance
 attendanceSchema.index({ studentId: 1 }); // Frequent query by studentId
 attendanceSchema.index({ forDate: 1 }); // Frequent query by forDate
+attendanceSchema.index({ branchYearId: 1 }); // Frequent query by branchYearId
 attendanceSchema.index({ branchId: 1 }); // Frequent query by branchId
 attendanceSchema.index({ teachingGroupId: 1 }); // Frequent query by teachingGroupYearId
 attendanceSchema.index({ subBranchId: 1 }); // Frequent query by subBranchId

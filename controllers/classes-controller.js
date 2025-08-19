@@ -16,23 +16,27 @@ const getClasses = async (req, res, next) => {
         classes = await Class.find()
             .populate([
                 {
-                    path: 'teachingGroupYearId',
+                    path: 'teachingGroupId',
                     select: [
-                        'academicYearId',
-                        'teachingGroupId',
+                        'name',
+                        'branchYearId',
+                        'subBranches',
                     ],
                     populate: [
                         {
-                            path: 'teachingGroupId',
+                            path: 'subBranches',
                             select: 'name'
                         },
                         {
-                            path: 'academicYearId',
-                            select: 'name'
+                            path: 'branchYearId',
+                            select: 'name academicYearId',
+                            populate: {
+                                path: 'academicYearId',
+                                select: 'name'
+                            }
                         }
                     ]
                 },
-                { path: 'attendances', select: 'forDate' },
                 { path: 'teachers', select: '_id' },
                 { path: 'students', select: '_id' }
             ])
@@ -44,10 +48,13 @@ const getClasses = async (req, res, next) => {
     // Reorganize data as requested
     const grouped = {};
     for (const cls of classes) {
-        const teachingGroupYear = cls.teachingGroupYearId;
-        if (!teachingGroupYear || !teachingGroupYear.academicYearId) continue;
-        const academicYearId = teachingGroupYear.academicYearId._id ? teachingGroupYear.academicYearId._id.toString() : teachingGroupYear.academicYearId.toString();
-        const academicYearName = teachingGroupYear.academicYearId.name || '';
+        const teachingGroup = cls.teachingGroupId;
+        if (!teachingGroup || !teachingGroup.branchYearId || !teachingGroup.branchYearId.academicYearId) continue;
+        
+        const academicYear = teachingGroup.branchYearId.academicYearId;
+        const academicYearId = academicYear._id ? academicYear._id.toString() : academicYear.toString();
+        const academicYearName = academicYear.name || '';
+        
         if (!grouped[academicYearId]) {
             grouped[academicYearId] = {
                 academicYearId,
@@ -60,7 +67,7 @@ const getClasses = async (req, res, next) => {
             name: cls.name,
             startTime: cls.startTime,
             isLocked: cls.isLocked,
-            teachingGroupId: teachingGroupYear.teachingGroupId && teachingGroupYear.teachingGroupId.name ? teachingGroupYear.teachingGroupId.name : '',
+            teachingGroupId: teachingGroup.name || '',
             teachers: Array.isArray(cls.teachers) ? cls.teachers.length : 0,
             students: Array.isArray(cls.students) ? cls.students.length : 0,
             attendances: Array.isArray(cls.attendances) ? cls.attendances.length : 0
@@ -68,7 +75,7 @@ const getClasses = async (req, res, next) => {
     }
     const result = Object.values(grouped);
     console.log('Get classes requested');
-    res.json({ academicYears: result });
+    res.json({ classes: result });
 }
 
 const getClassById = async (req, res, next) => {
@@ -111,6 +118,133 @@ const getClassById = async (req, res, next) => {
 
     console.log('Get getClassById requested');
     res.json({ class: identifiedClass.toObject({ getters: true }) });
+}
+
+const getClassesBySubBranchId = async (req, res, next) => {
+    const subBranchId = req.params.subBranchId;
+
+    let classes;
+    try {
+        // First find all teaching groups that belong to this subBranch
+        const teachingGroups = await TeachingGroup.find({ 
+            subBranches: subBranchId 
+        }).select('_id');
+
+        const teachingGroupIds = teachingGroups.map(tg => tg._id);
+
+        // Then find all classes that belong to these teaching groups
+        classes = await Class.find({ 
+            teachingGroupId: { $in: teachingGroupIds } 
+        })
+        .populate([
+            {
+                path: 'teachingGroupId',
+                select: [
+                    'name',
+                    'branchYearId',
+                    'subBranches',
+                ],
+                populate: [
+                    {
+                        path: 'subBranches',
+                        select: 'name'
+                    },
+                    {
+                        path: 'branchYearId',
+                        select: 'name academicYearId',
+                        populate: {
+                            path: 'academicYearId',
+                            select: 'name'
+                        }
+                    }
+                ]
+            },
+            { path: 'teachers', select: '_id name' },
+            { path: 'students', select: '_id name' }
+        ]);
+
+    } catch (err) {
+        console.error(err);
+        return next(new HttpError("Internal server error occurred!", 500));
+    }
+
+    if (!classes || classes.length === 0) {
+        return next(new HttpError(`No classes found for subBranch with id '${subBranchId}'`, 404));
+    }
+
+    console.log('Get classes by subBranchId requested');
+    res.json({ 
+        classes: classes.map(cls => cls.toObject({ getters: true }))
+    });
+}
+
+const getClassesBySubBranchIdAndAcademicYearId = async (req, res, next) => {
+    const { subBranchId, academicYearId } = req.params;
+
+    let classes;
+    try {
+        // First find all teaching groups that belong to this subBranch
+        const teachingGroups = await TeachingGroup.find({ 
+            subBranches: subBranchId 
+        }).select('_id branchYearId')
+        .populate({
+            path: 'branchYearId',
+            select: 'academicYearId',
+            match: { academicYearId: academicYearId }
+        });
+
+        // Filter out teaching groups where branchYearId is null (didn't match the academic year)
+        const filteredTeachingGroups = teachingGroups.filter(tg => tg.branchYearId !== null);
+        const teachingGroupIds = filteredTeachingGroups.map(tg => tg._id);
+
+        if (teachingGroupIds.length === 0) {
+            return next(new HttpError(`No classes found for subBranch with id '${subBranchId}' and academic year '${academicYearId}'`, 404));
+        }
+
+        // Then find all classes that belong to these teaching groups
+        classes = await Class.find({ 
+            teachingGroupId: { $in: teachingGroupIds } 
+        })
+        .populate([
+            {
+                path: 'teachingGroupId',
+                select: [
+                    'name',
+                    'branchYearId',
+                    'subBranches',
+                ],
+                populate: [
+                    {
+                        path: 'subBranches',
+                        select: 'name'
+                    },
+                    {
+                        path: 'branchYearId',
+                        select: 'name academicYearId',
+                        populate: {
+                            path: 'academicYearId',
+                            select: 'name'
+                        }
+                    }
+                ]
+            },
+            { path: 'teachers', select: '_id name' },
+            { path: 'students', select: '_id name' }
+        ]);
+
+    } catch (err) {
+        console.error(err);
+        return next(new HttpError("Internal server error occurred!", 500));
+    }
+
+    if (!classes || classes.length === 0) {
+        return next(new HttpError(`No classes found for subBranch with id '${subBranchId}' and academic year '${academicYearId}'`, 404));
+    }
+
+    console.log('Get classes by subBranchId and academicYearId requested');
+    res.json({ 
+        classes: classes.map(cls => cls.toObject({ getters: true }))
+    });
 }
 
 const getClassAttendanceByIdAndStudentId = async (req, res, next) => {
@@ -586,6 +720,8 @@ const unlockClassById = async (req, res, next) => {
 exports.getClasses = getClasses
 exports.getClassById = getClassById
 exports.getClassesByIds = getClassesByIds
+exports.getClassesBySubBranchId = getClassesBySubBranchId
+exports.getClassesBySubBranchIdAndAcademicYearId = getClassesBySubBranchIdAndAcademicYearId
 exports.getClassesByTeachingGroupId = getClassesByTeachingGroupId
 exports.getClassesByTeachingGroupYearId = getClassesByTeachingGroupYearId
 exports.createClass = createClass

@@ -5,7 +5,10 @@ const classController = require('../controllers/classes-controller')
 const router = express.Router();
 
 router.get('/', classController.getClasses);
+router.get('/sub-branch/:subBranchId', classController.getClassesBySubBranchId);
+router.get('/sub-branch/:subBranchId/academic-year/:academicYearId', classController.getClassesBySubBranchIdAndAcademicYearId);
 router.get('/:classId', classController.getClassById);
+
 router.get('/teaching-group/:teachingGroupId', classController.getClassesByTeachingGroupId);
 router.get('/teachingGroupYear/:teachingGroupYearId', classController.getClassesByTeachingGroupYearId);
 router.get('/:classId/student/:studentId', classController.getClassAttendanceByIdAndStudentId);

@@ -50,20 +50,20 @@ const getBranchById = async (req, res, next) => {
         if (populate) {
             identifiedBranch = await Branch.findById(branchId)
                 .populate({
-                    path: 'teachingGroups',
+                    path: 'subBranches',
                     select: 'name',
-                    populate: {
-                        path: 'teachingGroupYears',
-                        select: 'classes',
-                        populate: {
-                            path: 'classes',
-                            select: 'name'
-                        }
-                    }
+                    // populate: {
+                    //     path: 'teachingGroupYears',
+                    //     select: 'classes',
+                    //     populate: {
+                    //         path: 'classes',
+                    //         select: 'name'
+                    //     }
+                    // }
                 });
         } else {
             identifiedBranch = await Branch.findById(branchId)
-                .populate({ path: 'teachingGroups', select: 'name' });
+                .populate({ path: 'subBranches', select: 'name' });
         }
 
         if (!identifiedBranch) {

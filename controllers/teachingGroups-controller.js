@@ -10,7 +10,7 @@ const Class = require('../models/class');
 const getTeachingGroups = async (req, res, next) => {
     let teachingGroups;
     try {
-        teachingGroups = await TeachingGroup.find().populate('branchYearId').populate('teacherId');
+        teachingGroups = await TeachingGroup.find().populate('branchYearId');
     } catch (err) {
         const error = new HttpError('Fetching teaching groups failed, please try again later.', 500);
         return next(error);

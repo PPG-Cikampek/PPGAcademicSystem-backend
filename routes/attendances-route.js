@@ -9,6 +9,7 @@ router.get('/:attendanceId', attendancesController.getAttendanceById)
 router.get('/class/:classId', attendancesController.getAttendancesByClass)
 router.get('/academic-year/:academicYearId', attendancesController.getAttendancesByAcademicYearId)
 
+router.post('/overview/', attendancesController.getAttendanceOverview)
 router.post('/reports/', attendancesController.getAttendanceReports)
 
 router.post('/create-new-attendances/', attendancesController.createNewAttendanceForClass);

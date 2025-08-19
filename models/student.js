@@ -20,7 +20,7 @@ const studentSchema = new Schema({
 });
 
 // Indexes for better query performance
-studentSchema.index({ userId: 1 }); // Frequent query by userId
+studentSchema.index({ userId: 1 }); // Frequent query by userId 
 
 
 module.exports = mongoose.model('Student', studentSchema);
