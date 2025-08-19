@@ -1,9 +1,12 @@
 const express = require('express');
 
 const attendancesController = require('../controllers/attendances-controller')
+const checkAuth = require('../middlewares/check-auth')
 
 const router = express.Router();
 
+// protect all attendance routes
+router.use(checkAuth)
 
 router.get('/:attendanceId', attendancesController.getAttendanceById)
 router.get('/class/:classId', attendancesController.getAttendancesByClass)
