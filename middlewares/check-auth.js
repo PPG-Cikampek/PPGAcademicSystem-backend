@@ -3,20 +3,38 @@ const HttpError = require('../models/http-error')
 
 module.exports = (req, res, next) => {
     try {
-        const token = req.headers.authorization.split(' ')[1];
+        // Allow preflight requests to pass through
+        if (req.method === 'OPTIONS') {
+            return next();
+        }
+
+        if (!req.headers || !req.headers.authorization) {
+            throw new Error('No authorization header');
+        }
+
+        const parts = req.headers.authorization.split(' ');
+        if (parts.length !== 2) {
+            throw new Error('Malformed authorization header');
+        }
+
+        const token = parts[1];
         if (!token) {
-            throw new Error('Invalid token!')
+            throw new Error('Invalid token');
         }
 
         const decodedToken = jwt.verify(token, process.env.JWT_KEY);
 
-        console.log(decodedToken)
+        console.log('Auth decoded token:', decodedToken);
 
-        req.userData = { userId: decodedToken.userId, userRole: decodedToken.role, userBranchId: decodedToken.userBranchId };
-        next()
+        req.userData = {
+            userId: decodedToken.userId,
+            userRole: decodedToken.role,
+            userBranchId: decodedToken.userBranchId
+        };
+        next();
     } catch (err) {
-        console.log()
-        return next(new HttpError('Authentication Failed!', 403))
+        console.error('Authentication error:', err.message || err);
+        return next(new HttpError('Authentication Failed!', 401));
     }
 
 };
