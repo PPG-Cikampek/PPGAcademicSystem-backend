@@ -388,17 +388,21 @@ const updateAttendancesByIds = async (req, res, next) => {
 const getAttendanceOverview = async (req, res, next) => {
     const { academicYearId, branchId, subBranchId, teachingGroupId, classId, teacherClassIds, startDate, endDate } = req.body;
 
-    // centralized empty response
     const emptyResponse = { studentsData: [], overallStats: [], violationStats: [] };
+    console.log('[getAttendanceOverview] Request body:', req.body);
 
     try {
+        // ID normalization helper
+        const toId = (obj) => obj?._id?.toString() || obj?.toString() || obj;
+
         // Normalize inputs
         const teacherClassIdsArr = (teacherClassIds && Array.isArray(teacherClassIds) && teacherClassIds.length > 0)
-            ? teacherClassIds.map(id => id.toString())
+            ? teacherClassIds.map(id => toId(id))
             : null;
-        const classIdStr = classId ? classId.toString() : null;
+        const classIdStr = classId ? toId(classId) : null;
+        console.log('[getAttendanceOverview] teacherClassIdsArr:', teacherClassIdsArr, 'classIdStr:', classIdStr);
 
-        // Build attendance filter in one place
+        // Build base attendance filter
         const attendanceFilter = {};
         if (branchId) attendanceFilter.branchId = branchId;
         if (subBranchId) attendanceFilter.subBranchId = subBranchId;
@@ -406,60 +410,118 @@ const getAttendanceOverview = async (req, res, next) => {
 
         if (teacherClassIdsArr) attendanceFilter.classId = { $in: teacherClassIdsArr };
         else if (classIdStr) attendanceFilter.classId = classIdStr;
+        console.log('[getAttendanceOverview] Initial attendanceFilter:', attendanceFilter);
 
-        // Validate and apply date range if provided
+        // Apply date range filter
         if (startDate && endDate) {
             const s = new Date(startDate);
             const e = new Date(endDate);
             if (isNaN(s.getTime()) || isNaN(e.getTime())) {
+                console.log('[getAttendanceOverview] Invalid date format:', startDate, endDate);
                 return next(new HttpError('Invalid date format for startDate or endDate!', 400));
             }
             attendanceFilter.forDate = { $gte: s, $lte: e };
+            console.log('[getAttendanceOverview] Date range filter applied:', attendanceFilter.forDate);
         }
 
-        // If academicYearId is provided, find matching classes and validate/attach class filter
+        // Simplified academic year validation
         let classIds = null;
         if (academicYearId) {
             const academicYear = await AcademicYear.findById(academicYearId)
                 .populate({
                     path: 'branchYears',
-                    populate: {
-                        path: 'teachingGroups',
-                        select: 'classes',
-                        populate: { path: 'classes', select: '_id' }
-                    }
+                    populate: { path: 'teachingGroups', select: 'classes', populate: { path: 'classes', select: 'name' } },
+
                 })
-                .select('branchYears')
                 .lean();
+            console.log('[getAttendanceOverview] Loaded academicYear:', academicYear);
 
-            if (!academicYear) return res.status(200).json(emptyResponse);
+            if (!academicYear) {
+                console.log('[getAttendanceOverview] No academicYear found for:', academicYearId);
+                return res.status(200).json(emptyResponse);
+            }
 
-            // flatten class ids (as strings)
-            classIds = (academicYear.branchYears || []).reduce((acc, by) => {
-                (by.teachingGroups || []).forEach(tg => {
-                    (tg.classes || []).forEach(c => acc.push(c._id ? c._id.toString() : c.toString()));
-                });
-                return acc;
-            }, []);
+            // Flatten class IDs
+            classIds = [];
+            for (const branchYear of academicYear.branchYears || []) {
+                for (const teachingGroup of branchYear.teachingGroups || []) {
+                    for (const cls of teachingGroup.classes || []) {
+                        classIds.push(toId(cls));
+                    }
+                }
+            }
+            console.log('[getAttendanceOverview] Flattened classIds:', classIds);
 
-            if (!classIds || classIds.length === 0) return res.status(200).json(emptyResponse);
+            if (classIds.length === 0) {
+                console.log('[getAttendanceOverview] No classIds found in academicYear');
+                return res.status(200).json(emptyResponse);
+            }
 
-            // If request already constrained by class(s), ensure requested ids are within academic year classes
+            // Validate requested class IDs against academic year
             if (attendanceFilter.classId) {
-                let requestedIds = [];
-                if (attendanceFilter.classId.$in) requestedIds = attendanceFilter.classId.$in.map(id => id.toString());
-                else if (Array.isArray(attendanceFilter.classId)) requestedIds = attendanceFilter.classId.map(id => id.toString());
-                else requestedIds = [attendanceFilter.classId.toString()];
+                const requestedIds = attendanceFilter.classId.$in
+                    ? attendanceFilter.classId.$in.map(toId)
+                    : [toId(attendanceFilter.classId)];
+                console.log('[getAttendanceOverview] Requested classIds:', requestedIds);
 
-                const allContained = requestedIds.every(id => classIds.includes(id));
-                if (!allContained) return res.status(200).json(emptyResponse);
+                if (!requestedIds.every(id => classIds.includes(id))) {
+                    console.log('[getAttendanceOverview] Requested classIds not in academicYear classIds');
+                    return res.status(200).json(emptyResponse);
+                }
             } else {
                 attendanceFilter.classId = { $in: classIds };
+                console.log('[getAttendanceOverview] attendanceFilter.classId set to academicYear classIds');
             }
         }
 
-        // Query attendances efficiently (lean)
-        const attendances = await Attendance.find(attendanceFilter)
+        // Determine final class IDs for roster collection
+        const rosterClassIds = teacherClassIdsArr || (classIdStr ? [classIdStr] : classIds);
+        console.log('[getAttendanceOverview] rosterClassIds:', rosterClassIds);
+
+        // Pre-collect student IDs from classes and apply subBranch filtering
+        let finalStudentIds = [];
+        if (rosterClassIds && rosterClassIds.length > 0) {
+            const classes = await Class.find({ _id: { $in: rosterClassIds } }).select('students').lean();
+            console.log('[getAttendanceOverview] Loaded classes for rosterClassIds:', classes);
+            const rosterStudentIds = [...new Set(classes.flatMap(c => (c.students || []).map(toId)))];
+            console.log('[getAttendanceOverview] rosterStudentIds:', rosterStudentIds);
+
+            if (subBranchId) {
+                const usersInSub = await User.find({ subBranchId }).select('_id').lean();
+                const userIds = usersInSub.map(u => toId(u));
+                console.log('[getAttendanceOverview] userIds in subBranch:', userIds);
+
+                if (userIds.length === 0) {
+                    console.log('[getAttendanceOverview] No users found in subBranch:', subBranchId);
+                    return res.status(200).json(emptyResponse);
+                }
+
+                const filteredStudents = await Student.find({
+                    userId: { $in: userIds },
+                    _id: { $in: rosterStudentIds }
+                }).select('_id').lean();
+                console.log('[getAttendanceOverview] filteredStudents:', filteredStudents);
+
+                finalStudentIds = filteredStudents.map(s => toId(s));
+            } else {
+                finalStudentIds = rosterStudentIds;
+            }
+            console.log('[getAttendanceOverview] finalStudentIds:', finalStudentIds);
+
+            if (finalStudentIds.length === 0) {
+                console.log('[getAttendanceOverview] No finalStudentIds after filtering');
+                return res.status(200).json(emptyResponse);
+            }
+        }
+
+        // Single attendance query with complete filter
+        const completeFilter = { ...attendanceFilter };
+        if (finalStudentIds.length > 0) {
+            completeFilter.studentId = { $in: finalStudentIds };
+        }
+        console.log('[getAttendanceOverview] completeFilter for Attendance.find:', completeFilter);
+
+        const attendances = await Attendance.find(completeFilter)
             .populate({ path: 'studentId', select: ['name', 'nis', 'image', 'thumbnail'] })
             .populate({ path: 'classId', select: 'name teachers', populate: { path: 'teachers', select: ['name', 'nig'] } })
             .populate({
@@ -474,19 +536,48 @@ const getAttendanceOverview = async (req, res, next) => {
             .populate({ path: 'subBranchId', select: 'name' })
             .sort({ forDate: 1, 'studentId.name': 1 })
             .lean();
+        console.log('[getAttendanceOverview] attendances found:', attendances.length);
 
-        const attendancesList = attendances || [];
-
-        // helper closures kept local: overall and violation stats (overallStats kept using raw status values per defaults)
+        // Helper functions for statistics
         const getOverallStats = (atts) => {
             const statusCounts = atts.reduce((acc, a) => {
                 const s = a.status || 'Tanpa Keterangan';
                 acc[s] = (acc[s] || 0) + 1;
                 return acc;
             }, {});
-            const total = atts.length || 0;
+            const total = atts.length;
             if (total === 0) return [];
-            return Object.keys(statusCounts).map(status => ({ status, count: statusCounts[status], percentage: Math.round((statusCounts[status] / total) * 10000) / 100 })).sort((a, b) => a.status.localeCompare(b.status));
+
+            // Compute exact fractional percentages, then distribute remainder to ensure whole numbers sum to 100
+            const items = Object.keys(statusCounts).map(status => {
+                const count = statusCounts[status];
+                const rawPct = (count / total) * 100;
+                return { status, count, rawPct, floorPct: Math.floor(rawPct), frac: rawPct - Math.floor(rawPct) };
+            });
+
+            let sumFloor = items.reduce((s, it) => s + it.floorPct, 0);
+            let remainder = 100 - sumFloor;
+
+            // Sort by fractional part descending to distribute remaining 1% chunks fairly
+            items.sort((a, b) => b.frac - a.frac || b.count - a.count || a.status.localeCompare(b.status));
+            for (let i = 0; i < items.length && remainder > 0; i++) {
+                items[i].floorPct += 1;
+                remainder -= 1;
+            }
+
+            // If for any reason remainder is negative or still positive, adjust the largest count
+            if (remainder !== 0) {
+                // Find max by count
+                const maxIdx = items.reduce((maxI, it, idx) => it.count > items[maxI].count ? idx : maxI, 0);
+                items[maxIdx].floorPct += remainder;
+            }
+
+            const statsArr = items
+                .map(it => ({ status: it.status, count: it.count, percentage: it.floorPct }))
+                .sort((a, b) => a.status.localeCompare(b.status));
+
+            console.log('[getAttendanceOverview] getOverallStats:', statsArr);
+            return statsArr;
         };
 
         const getViolationStats = (atts) => {
@@ -497,84 +588,20 @@ const getAttendanceOverview = async (req, res, next) => {
                     if (occurred) violationCounts[violation] = (violationCounts[violation] || 0) + 1;
                 });
             });
-            return Object.entries(violationCounts).map(([violation, count]) => ({ violation, count }));
+            const statsArr = Object.entries(violationCounts).map(([violation, count]) => ({ violation, count }));
+            console.log('[getAttendanceOverview] getViolationStats:', statsArr);
+            return statsArr;
         };
 
-        // Determine rosterClassIds preference: teacherClassIds > classId > academicYear derived classIds
-        let rosterClassIds = null;
-        if (teacherClassIdsArr) rosterClassIds = teacherClassIdsArr;
-        else if (classIdStr) rosterClassIds = [classIdStr];
-        else if (classIds && classIds.length > 0) rosterClassIds = classIds;
-
-        // Collect roster student IDs
-        let rosterStudentIds = [];
-        if (rosterClassIds && rosterClassIds.length > 0) {
-            const classes = await Class.find({ _id: { $in: rosterClassIds } }).select('students').lean();
-            const set = classes.reduce((acc, c) => {
-                (c.students || []).forEach(s => acc.add(s.toString()));
-                return acc;
-            }, new Set());
-            rosterStudentIds = Array.from(set);
-        } else {
-            // fallback: include students seen in attendances
-            rosterStudentIds = Array.from(new Set(attendancesList.map(a => {
-                if (!a.studentId) return null;
-                if (typeof a.studentId === 'string') return a.studentId.toString();
-                if (a.studentId._id) return a.studentId._id.toString();
-                if (a.studentId.toString) return a.studentId.toString();
-                return null;
-            }).filter(Boolean)));
-        }
-
-        // If subBranchId is provided, intersect rosterStudentIds with students whose User.subBranchId matches
-        if (subBranchId) {
-            // Find users that belong to the requested subBranch
-            const usersInSub = await User.find({ subBranchId }).select('_id').lean();
-            const userIds = (usersInSub || []).map(u => u._id.toString());
-
-            if (userIds.length === 0) {
-                // No users in that sub-branch -> empty response
-                return res.status(200).json(emptyResponse);
-            }
-
-            // Find students linked to those users and also present in the current roster
-            const filteredStudents = await Student.find({ userId: { $in: userIds }, _id: { $in: rosterStudentIds } }).select('_id').lean();
-            rosterStudentIds = (filteredStudents || []).map(s => s._id.toString());
-
-            if (!rosterStudentIds || rosterStudentIds.length === 0) {
-                // No matching students after applying subBranch filter
-                return res.status(200).json(emptyResponse);
-            }
-        }
-
-        // Perform a DB-level attendance query limited to the allowed rosterStudentIds for better performance
-        let filteredAttendances = [];
-        console.log(req.userData)
-        if (rosterStudentIds && rosterStudentIds.length > 0) {
-            const attendanceQuery = Object.assign({}, attendanceFilter, { studentId: { $in: rosterStudentIds } });
-            filteredAttendances = await Attendance.find(attendanceQuery)
-                .populate({ path: 'studentId', select: ['name', 'nis', 'image', 'thumbnail'] })
-                .populate({ path: 'classId', select: 'name teachers', populate: { path: 'teachers', select: ['name', 'nig'] } })
-                .populate({
-                    path: 'teachingGroupId',
-                    select: 'name branchYearId subBranches',
-                    populate: [
-                        { path: 'branchYearId', select: 'branchId', populate: { path: 'branchId', select: 'name' } },
-                        { path: 'subBranches', select: 'name' }
-                    ]
-                })
-                .populate({ path: 'branchId', select: 'name' })
-                .populate({ path: 'subBranchId', select: 'name' })
-                .sort({ forDate: 1, 'studentId.name': 1 })
-                .lean();
-        }
-
-        // Fetch student docs for roster (name, nis, thumbnail)
-        const students = rosterStudentIds.length > 0 ? await Student.find({ _id: { $in: rosterStudentIds } }).select('name nis thumbnail').lean() : [];
+        // Fetch student data for aggregation
+        const students = finalStudentIds.length > 0
+            ? await Student.find({ _id: { $in: finalStudentIds } }).select('name nis thumbnail').lean()
+            : [];
+        console.log('[getAttendanceOverview] students loaded for aggregation:', students.length);
         const studentMap = {};
-        students.forEach(s => { studentMap[s._id.toString()] = s; });
+        students.forEach(s => { studentMap[toId(s)] = s; });
 
-        // Normalization mappings (used for student-level labels)
+        // Status normalization
         const statusMap = {
             'present': 'Hadir', 'hadir': 'Hadir',
             'late': 'Terlambat', 'terlambat': 'Terlambat',
@@ -584,9 +611,9 @@ const getAttendanceOverview = async (req, res, next) => {
         };
         const commonStatuses = ['Hadir', 'Terlambat', 'Izin', 'Sakit', 'Tanpa Keterangan'];
 
-        // initialize aggregation buckets per student
+        // Initialize student aggregation
         const studentAgg = {};
-        rosterStudentIds.forEach(id => {
+        finalStudentIds.forEach(id => {
             const sd = studentMap[id] || {};
             studentAgg[id] = {
                 id,
@@ -597,17 +624,15 @@ const getAttendanceOverview = async (req, res, next) => {
                 violationData: { 'Perlengkapan Belajar': 0, 'Sikap': 0, 'Kerapihan': 0 }
             };
         });
+        console.log('[getAttendanceOverview] Initialized studentAgg:', studentAgg);
 
-        // Aggregate attendances into studentAgg (use filtered attendances)
-        filteredAttendances.forEach(att => {
+        // Aggregate attendance data
+        attendances.forEach(att => {
             if (!att.studentId) return;
-            let sid = null;
-            if (typeof att.studentId === 'string') sid = att.studentId.toString();
-            else if (att.studentId._id) sid = att.studentId._id.toString();
-            else sid = att.studentId.toString();
+            const sid = toId(att.studentId);
 
             if (!studentAgg[sid]) {
-                const sd = studentMap[sid] || { name: '', nis: '', thumbnail: '' };
+                const sd = studentMap[sid] || {};
                 studentAgg[sid] = {
                     id: sid,
                     name: sd.name || '',
@@ -624,121 +649,89 @@ const getAttendanceOverview = async (req, res, next) => {
             if (!studentAgg[sid].attendances.hasOwnProperty(mapped)) studentAgg[sid].attendances[mapped] = 0;
             studentAgg[sid].attendances[mapped]++;
 
-            // violations (guarded)
+            // Track violations
             if (att.violations && typeof att.violations === 'object') {
                 if (att.violations.attribute) studentAgg[sid].violationData['Perlengkapan Belajar']++;
                 if (att.violations.attitude) studentAgg[sid].violationData['Sikap']++;
                 if (att.violations.tidiness) studentAgg[sid].violationData['Kerapihan']++;
             }
         });
+        console.log('[getAttendanceOverview] Aggregated studentAgg:', studentAgg);
 
-        // Convert per-student attendance counts into percentages that sum to 100 (kept logic)
+        // Simplified percentage calculation
         Object.values(studentAgg).forEach(student => {
-            const counts = student.attendances || {};
+            const counts = student.attendances;
             const keys = Object.keys(counts);
-            const totalCount = keys.reduce((s, k) => s + (counts[k] || 0), 0);
+            const totalCount = keys.reduce((s, k) => s + counts[k], 0);
 
             if (totalCount === 0) {
-                keys.forEach(k => { student.attendances[k] = 0; });
+                keys.forEach(k => { counts[k] = 0; });
                 return;
             }
 
-            const items = keys.map(k => {
-                const raw = (counts[k] / totalCount) * 100;
-                const floor = Math.floor(raw);
-                return { key: k, raw, floor, frac: raw - floor };
-            });
+            const percentages = keys.map(k => Math.round((counts[k] / totalCount) * 100));
+            const sum = percentages.reduce((a, b) => a + b, 0);
 
-            let sumFloor = items.reduce((s, it) => s + it.floor, 0);
-            let remainder = 100 - sumFloor;
-            items.sort((a, b) => b.frac - a.frac);
-            for (let i = 0; i < items.length && remainder > 0; i++) {
-                items[i].floor += 1;
-                remainder -= 1;
+            // Adjust largest percentage to ensure sum = 100
+            if (sum !== 100) {
+                const maxIndex = percentages.indexOf(Math.max(...percentages));
+                percentages[maxIndex] += (100 - sum);
             }
-            items.forEach(it => { student.attendances[it.key] = it.floor; });
+
+            keys.forEach((k, i) => { counts[k] = percentages[i]; });
         });
+        console.log('[getAttendanceOverview] studentAgg after percentage calculation:', studentAgg);
 
         const studentsData = Object.values(studentAgg).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        console.log('[getAttendanceOverview] studentsData:', studentsData);
 
-        // Build studentsDataByClass grouped from studentsData and class membership
+        // Build studentsDataByClass for subBranchAdmin only
         let studentsDataByClass = [];
         if (req.userData.userRole === 'subBranchAdmin') {
-            try {
-                // decide which class ids to use for grouping: prefer rosterClassIds, else derive from attendances
-                const classIdsToGroup = (rosterClassIds && rosterClassIds.length > 0)
-                    ? rosterClassIds
-                    : Array.from(new Set(filteredAttendances.map(a => {
-                        if (!a.classId) return null;
-                        if (typeof a.classId === 'string') return a.classId.toString();
-                        if (a.classId._id) return a.classId._id.toString();
-                        return a.classId.toString();
-                    }).filter(Boolean)));
+            const classIdsToGroup = rosterClassIds?.length > 0
+                ? rosterClassIds
+                : [...new Set(attendances.map(a => toId(a.classId)).filter(Boolean))];
+            console.log('[getAttendanceOverview] classIdsToGroup for subBranchAdmin:', classIdsToGroup);
 
-                if (classIdsToGroup && classIdsToGroup.length > 0) {
-                    // load classes (students membership) for grouping
-                    const classesForGroup = await Class.find({ _id: { $in: classIdsToGroup } }).select('_id name students').lean();
+            if (classIdsToGroup.length > 0) {
+                const classesForGroup = await Class.find({ _id: { $in: classIdsToGroup } }).select('_id name students').lean();
+                const classStudentMap = {};
+                classesForGroup.forEach(c => {
+                    classStudentMap[toId(c)] = new Set((c.students || []).map(toId));
+                });
+                console.log('[getAttendanceOverview] classesForGroup:', classesForGroup);
 
-                    // build map of classId -> Set(studentId)
-                    const classStudentMap = {};
-                    (classesForGroup || []).forEach(c => {
-                        classStudentMap[c._id.toString()] = new Set((c.students || []).map(s => s.toString()));
-                    });
+                studentsDataByClass = classesForGroup.map(c => {
+                    const cId = toId(c);
+                    const studentsInClass = studentsData.filter(sd => classStudentMap[cId]?.has(sd.id));
+                    const attendancesForClass = attendances.filter(a => toId(a.classId) === cId);
 
-                    // create group entries for known classes
-                    studentsDataByClass = (classesForGroup || []).map(c => {
-                        const cId = c._id.toString();
-                        const studentsInClass = studentsData.filter(sd => classStudentMap[cId] && classStudentMap[cId].has(sd.id));
-                        return {
-                            classId: cId,
-                            className: c.name || '',
-                            students: studentsInClass
-                        };
-                    });
+                    const overallArr = getOverallStats(attendancesForClass);
+                    const attendancesObj = overallArr.reduce((o, it) => { o[it.status] = it.percentage; return o; }, {});
 
-                    // fallback: if some class ids came from attendances but have no Class doc, include them too
-                    const knownIds = new Set((classesForGroup || []).map(c => c._id.toString()));
-                    const missingClassIds = classIdsToGroup.filter(id => !knownIds.has(id));
-                    missingClassIds.forEach(id => {
-                        const studentsInClass = studentsData.filter(sd => {
-                            return filteredAttendances.some(a => {
-                                if (!a.classId) return false;
-                                const cid = (typeof a.classId === 'string') ? a.classId.toString() : (a.classId._id ? a.classId._id.toString() : a.classId.toString());
-                                const sid = (typeof a.studentId === 'string') ? a.studentId.toString() : (a.studentId._id ? a.studentId._id.toString() : a.studentId.toString());
-                                return cid === id && sd.id === sid;
-                            });
-                        });
-                        studentsDataByClass.push({ classId: id, className: '', students: studentsInClass });
-                    });
-                }
-            } catch (e) {
-                // don't fail the whole request if grouping fails; return empty groups
-                console.warn('Failed to build studentsDataByClass', e);
-                studentsDataByClass = [];
+                    return {
+                        classId: cId,
+                        clsName: c.name || '',
+                        studentsCount: studentsInClass.length,
+                        attendances: attendancesObj,
+                        violationStats: getViolationStats(attendancesForClass)
+                    };
+                }).filter(g => g.studentsCount > 0);
+                console.log('[getAttendanceOverview] studentsDataByClass:', studentsDataByClass);
             }
         }
-        // Remove any class groups that have no students to avoid sending empty classes to frontend
-        try {
-            if (Array.isArray(studentsDataByClass)) {
-                studentsDataByClass = studentsDataByClass.filter(g => Array.isArray(g.students) && g.students.length > 0);
-            }
-        } catch (e) {
-            // if filtering fails for any reason, keep original groups but do not crash
-            console.warn('Failed to filter empty studentsDataByClass groups', e);
-        }
 
-        // Final single debug log
-        console.log(`Retrieved ${filteredAttendances.length} attendance records (after subBranch/student filtering)`);
+        console.log(`[getAttendanceOverview] Retrieved ${attendances.length} attendance records`);
 
         return res.status(200).json({
             studentsData,
             studentsDataByClass,
-            overallStats: getOverallStats(filteredAttendances),
-            violationStats: getViolationStats(filteredAttendances)
+            overallStats: getOverallStats(attendances),
+            violationStats: getViolationStats(attendances)
         });
 
     } catch (error) {
-        console.error('Error retrieving attendance reports:', error);
+        console.error('[getAttendanceOverview] Error retrieving attendance reports:', error);
         return next(new HttpError('Internal server error occurred!', 500));
     }
 };
@@ -851,11 +844,28 @@ const getAttendanceReports = async (req, res, next) => {
         // attendanceData array
         const attendanceData = [];
         if (total > 0) {
-            Object.keys(attendanceCounts).forEach(status => {
+            // Convert counts to fractional percentages and distribute to whole integers summing to 100
+            const items = Object.keys(attendanceCounts).map(status => {
                 const count = attendanceCounts[status];
-                const pct = Math.round((count / total) * 100);
-                attendanceData.push({ status, count, percentage: String(pct) });
+                const rawPct = (count / total) * 100;
+                return { status, count, rawPct, floorPct: Math.floor(rawPct), frac: rawPct - Math.floor(rawPct) };
             });
+
+            let sumFloor = items.reduce((s, it) => s + it.floorPct, 0);
+            let remainder = 100 - sumFloor;
+
+            items.sort((a, b) => b.frac - a.frac || b.count - a.count || a.status.localeCompare(b.status));
+            for (let i = 0; i < items.length && remainder > 0; i++) {
+                items[i].floorPct += 1;
+                remainder -= 1;
+            }
+
+            if (remainder !== 0) {
+                const maxIdx = items.reduce((maxI, it, idx) => it.count > items[maxI].count ? idx : maxI, 0);
+                items[maxIdx].floorPct += remainder;
+            }
+
+            items.forEach(it => attendanceData.push({ status: it.status, count: it.count, percentage: String(it.floorPct) }));
         }
 
         // violationData array
