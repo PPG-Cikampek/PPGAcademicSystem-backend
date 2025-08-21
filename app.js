@@ -1,37 +1,39 @@
 // app.js
-const fs = require('fs');
-const path = require('path');
-const express = require('express');
-const mongoose = require('mongoose');
-require('dotenv').config(); // Load environment variables
+const fs = require("fs");
+const path = require("path");
+const express = require("express");
+const mongoose = require("mongoose");
+require("dotenv").config(); // Load environment variables
 
-const logRequest = require('./middlewares/log-request');
-const usersRoutes = require('./routes/users-route');
-const levelsRoutes = require('./routes/levels-route');
-const teachingGroupsRoutes = require('./routes/teacingGroups-route');
-const academicYearsRoutes = require('./routes/academicYears-route');
-const branchYearsRoutes = require('./routes/branchYears-route');
-const classesRoutes = require('./routes/classes-route');
-const teachersRoutes = require('./routes/teachers-route');
-const studentsRoutes = require('./routes/students-route');
-const attendancesRoutes = require('./routes/attendances-route');
-const dashboardRoutes = require('./routes/dashboard-route');
-const journalsRoutes = require('./routes/journals-route');
-const materialProgressesRoutes = require('./routes/materialProgresses-route');
-const munaqasyahRoutes = require('./routes/munaqasyahs-route');
-const scoreRoutes = require('./routes/scores-route');
-const HttpError = require('./models/http-error');
+const logRequest = require("./middlewares/log-request");
+const usersRoutes = require("./routes/users-route");
+const levelsRoutes = require("./routes/levels-route");
+const teachingGroupsRoutes = require("./routes/teachingGroups-route");
+const academicYearsRoutes = require("./routes/academicYears-route");
+const branchYearsRoutes = require("./routes/branchYears-route");
+const classesRoutes = require("./routes/classes-route");
+const teachersRoutes = require("./routes/teachers-route");
+const studentsRoutes = require("./routes/students-route");
+const attendancesRoutes = require("./routes/attendances-route");
+const dashboardRoutes = require("./routes/dashboard-route");
+const journalsRoutes = require("./routes/journals-route");
+const materialProgressesRoutes = require("./routes/materialProgresses-route");
+const munaqasyahRoutes = require("./routes/munaqasyahs-route");
+const scoreRoutes = require("./routes/scores-route");
+const HttpError = require("./models/http-error");
 
 const app = express();
 const PORT = 5000;
 
 // MongoDB connection string
 const MONGO_URI = `mongodb://${process.env.DB_USER}:${process.env.DB_PASSWORD}@cluster0-shard-00-00.eupjv.mongodb.net:27017,cluster0-shard-00-01.eupjv.mongodb.net:27017,cluster0-shard-00-02.eupjv.mongodb.net:27017/${process.env.DB_NAME}?ssl=true&replicaSet=atlas-cph2wz-shard-0&authSource=admin&retryWrites=true&w=majority&appName=Cluster0`;
-const clientOptions = { serverApi: { version: '1', strict: true, deprecationErrors: true } };
+const clientOptions = {
+    serverApi: { version: "1", strict: true, deprecationErrors: true },
+};
 
 // Middleware
 app.use((req, res, next) => {
-    console.log('Received URL:', req.originalUrl);
+    console.log("Received URL:", req.originalUrl);
     next();
 });
 
@@ -39,38 +41,44 @@ app.use(express.json()); // Parses incoming JSON requests
 app.use(express.urlencoded({ extended: true })); // Parses URL-encoded data
 
 // Serve static files for images
-app.use('/api/uploads/images', express.static(path.join(__dirname, 'uploads', 'images')));
+app.use(
+    "/api/uploads/images",
+    express.static(path.join(__dirname, "uploads", "images"))
+);
 
 // Logging middleware to log every request
 app.use(logRequest); // Log every request
 
 // CORS handling
 app.use((req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE');
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+    );
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE");
 
     next();
 });
 
 // Initialize backup scheduler
-require('./scheduler/backup-scheduler');
+require("./scheduler/backup-scheduler");
 
 // Routes
-app.use('/api/users', usersRoutes);
-app.use('/api/levels', levelsRoutes);
-app.use('/api/teachingGroups', teachingGroupsRoutes);
-app.use('/api/academicYears', academicYearsRoutes);
-app.use('/api/branchYears', branchYearsRoutes);
-app.use('/api/classes', classesRoutes);
-app.use('/api/teachers', teachersRoutes);
-app.use('/api/students', studentsRoutes);
-app.use('/api/attendances', attendancesRoutes);
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/journals', journalsRoutes);
-app.use('/api/materialProgress', materialProgressesRoutes);
-app.use('/api/munaqasyahs', munaqasyahRoutes);
-app.use('/api/scores', scoreRoutes);
+app.use("/api/users", usersRoutes);
+app.use("/api/levels", levelsRoutes);
+app.use("/api/teachingGroups", teachingGroupsRoutes);
+app.use("/api/academicYears", academicYearsRoutes);
+app.use("/api/branchYears", branchYearsRoutes);
+app.use("/api/classes", classesRoutes);
+app.use("/api/teachers", teachersRoutes);
+app.use("/api/students", studentsRoutes);
+app.use("/api/attendances", attendancesRoutes);
+app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/journals", journalsRoutes);
+app.use("/api/materialProgress", materialProgressesRoutes);
+app.use("/api/munaqasyahs", munaqasyahRoutes);
+app.use("/api/scores", scoreRoutes);
 
 // Catch-all route for handling unknown routes
 app.use((req, res, next) => {
@@ -94,13 +102,18 @@ app.use((error, req, res, next) => {
 });
 
 // Connect to MongoDB and start the server
-mongoose.connect(MONGO_URI, clientOptions)
+mongoose
+    .connect(MONGO_URI, clientOptions)
     .then(() => {
         console.log(`Connected to MongoDB -> ${process.env.DB_NAME}`);
         app.listen(process.env.PORT || PORT, () => {
-            console.log(`Server is running on http://localhost:${process.env.PORT || PORT}`);
+            console.log(
+                `Server is running on http://localhost:${
+                    process.env.PORT || PORT
+                }`
+            );
         });
     })
     .catch((err) => {
-        console.error('MongoDB connection error:', err);
+        console.error("MongoDB connection error:", err);
     });
