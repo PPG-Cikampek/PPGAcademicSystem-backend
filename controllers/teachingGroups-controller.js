@@ -1,39 +1,57 @@
-const HttpError = require('../models/http-error')
-const mongoose = require('mongoose');
+const HttpError = require("../models/http-error");
+const mongoose = require("mongoose");
 
-const TeachingGroup = require('../models/teachingGroup');
-const TeachingGroupYear = require('../models/teachingGroupYear');
-const SubBranch = require('../models/subBranch');
-const BranchYear = require('../models/branchYear');
-const Class = require('../models/class');
+const TeachingGroup = require("../models/teachingGroup");
+const TeachingGroupYear = require("../models/teachingGroupYear");
+const SubBranch = require("../models/subBranch");
+const BranchYear = require("../models/branchYear");
+const Class = require("../models/class");
 
 const getTeachingGroups = async (req, res, next) => {
     let teachingGroups;
     try {
-        teachingGroups = await TeachingGroup.find().populate('branchYearId');
+        teachingGroups = await TeachingGroup.find().populate("branchYearId");
     } catch (err) {
-        const error = new HttpError('Fetching teaching groups failed, please try again later.', 500);
+        const error = new HttpError(
+            "Fetching teaching groups failed, please try again later.",
+            500
+        );
         return next(error);
     }
 
-    res.json({ teachingGroups: teachingGroups.map(group => group.toObject({ getters: true })) });
-}
+    res.json({
+        teachingGroups: teachingGroups.map((group) =>
+            group.toObject({ getters: true })
+        ),
+    });
+};
 
 const getTeachingGroupById = async (req, res, next) => {
     const teachingGroupId = req.params.teachingGroupId;
     let identifiedTeachingGroup;
     try {
         identifiedTeachingGroup = await TeachingGroup.findById(teachingGroupId)
-            .populate('classes')
-            .populate('subBranches')
-            .populate({ path: 'branchYearId', select: ['academicYearId', 'isActive'], populate: { path: 'academicYearId', select: 'isActive' } })
+            .populate("classes")
+            .populate("subBranches")
+            .populate({
+                path: "branchYearId",
+                select: ["academicYearId", "isActive"],
+                populate: { path: "academicYearId", select: "isActive" },
+            });
     } catch (err) {
-        const error = new HttpError('Fetching teaching groups failed, please try again later.', 500);
+        const error = new HttpError(
+            "Fetching teaching groups failed, please try again later.",
+            500
+        );
         return next(error);
     }
 
-    res.json({ identifiedTeachingGroup: identifiedTeachingGroup.toObject({ getters: true }) });
-}
+    res.json({
+        identifiedTeachingGroup: identifiedTeachingGroup.toObject({
+            getters: true,
+        }),
+    });
+};
 
 const createTeachingGroup = async (req, res, next) => {
     const { name, address, branchYearId } = req.body;
@@ -48,54 +66,63 @@ const createTeachingGroup = async (req, res, next) => {
             branchYearId,
         });
         await createdTeachingGroup.save({ session });
-        await mongoose.model('BranchYear').findByIdAndUpdate(
-            branchYearId,
-            { $push: { teachingGroups: createdTeachingGroup._id } },
-            { new: true, session }
-        );
+        await mongoose
+            .model("BranchYear")
+            .findByIdAndUpdate(
+                branchYearId,
+                { $push: { teachingGroups: createdTeachingGroup._id } },
+                { new: true, session }
+            );
         await session.commitTransaction();
         session.endSession();
-        res.status(201).json({ message: 'Berhasil Menambahkan KBM!', teachingGroup: createdTeachingGroup.toObject({ getters: true }) });
+        res.status(201).json({
+            message: "Berhasil Menambahkan KBM!",
+            teachingGroup: createdTeachingGroup.toObject({ getters: true }),
+        });
     } catch (err) {
         await session.abortTransaction();
         session.endSession();
         console.error(err);
-        const error = new HttpError('Creating teaching group failed, please try again.', 500);
+        const error = new HttpError(
+            "Creating teaching group failed, please try again.",
+            500
+        );
         return next(error);
     }
-}
+};
 
-const registerSubBranchtoTeachingGroup = async (req, res, next) => {
+const registerSubBranchToTeachingGroup = async (req, res, next) => {
     const { name, teachingGroupId, subBranchId } = req.body;
 
     // Finding relevant subbranch and academic year
     let existingTeachingGroup;
     let existingSubBranch;
     try {
-        existingTeachingGroup = await TeachingGroup.findById(teachingGroupId)
-        existingSubBranch = await SubBranch.findById(subBranchId)
+        existingTeachingGroup = await TeachingGroup.findById(teachingGroupId);
+        existingSubBranch = await SubBranch.findById(subBranchId);
     } catch (err) {
         console.log(err);
-        return next(new HttpError('Internal server error!', 500));
+        return next(new HttpError("Internal server error!", 500));
     }
 
     if (!existingTeachingGroup) {
-        return next(new HttpError('KBM tidak ditemukan!', 500));
+        return next(new HttpError("KBM tidak ditemukan!", 500));
     }
     if (!existingSubBranch) {
-        return next(new HttpError('Kelompok tidak ditemukan!', 500));
+        return next(new HttpError("Kelompok tidak ditemukan!", 500));
     }
 
-    const isSubBranchRegistered = existingTeachingGroup.subBranches.some(subBranch => subBranch.toString() === subBranchId);
+    const isSubBranchRegistered = existingTeachingGroup.subBranches.some(
+        (subBranch) => subBranch.toString() === subBranchId
+    );
 
     if (isSubBranchRegistered) {
-        return next(new HttpError('Kelompok sudah terdaftar di KBM ini!', 500));
+        return next(new HttpError("Kelompok sudah terdaftar di KBM ini!", 500));
     }
-
 
     try {
         const sess = await mongoose.startSession();
-        sess.startTransaction()
+        sess.startTransaction();
         // await createdTeachingGroupYear.save({ session: sess });
         existingSubBranch.teachingGroups.push(existingTeachingGroup);
         existingTeachingGroup.subBranches.push(existingSubBranch);
@@ -104,13 +131,16 @@ const registerSubBranchtoTeachingGroup = async (req, res, next) => {
         await sess.commitTransaction();
     } catch (err) {
         console.log(err);
-        const error = new HttpError('Gagal mendaftarkan kelompok!', 500);
+        const error = new HttpError("Gagal mendaftarkan kelompok!", 500);
         return next(error);
     }
 
-    console.log(`A subBranch has been registered to teachingGroup!`)
-    res.status(202).json({ message: `Berhasil mendaftarkan kelompok!`, class: existingTeachingGroup });
-}
+    console.log(`A subBranch has been registered to teachingGroup!`);
+    res.status(202).json({
+        message: `Berhasil mendaftarkan kelompok!`,
+        class: existingTeachingGroup,
+    });
+};
 
 const lockTeachingGroupById = async (req, res, next) => {
     const { teachingGroupId } = req.body;
@@ -118,34 +148,55 @@ const lockTeachingGroupById = async (req, res, next) => {
     let identifiedTeachingGroup;
     try {
         identifiedTeachingGroup = await TeachingGroup.findById(teachingGroupId)
-            .populate('subBranches')
-            .populate('classes');
+            .populate("subBranches")
+            .populate("classes");
 
         if (!identifiedTeachingGroup) {
-            return next(new HttpError(`Could not find an Teaching Group with ID '${teachingGroupId}'`, 404));
+            return next(
+                new HttpError(
+                    `Could not find an Teaching Group with ID '${teachingGroupId}'`,
+                    404
+                )
+            );
         }
 
         // Check branchYearId.isActive
-        const branchYear = await BranchYear.findById(identifiedTeachingGroup.branchYearId);
+        const branchYear = await BranchYear.findById(
+            identifiedTeachingGroup.branchYearId
+        );
         if (!branchYear) {
-            return next(new HttpError('BranchYear tidak ditemukan!', 404));
+            return next(new HttpError("BranchYear tidak ditemukan!", 404));
         }
         if (branchYear.isActive) {
-            return next(new HttpError('Tidak dapat mengunci KBM pada tahun ajaran yang aktif!', 400));
+            return next(
+                new HttpError(
+                    "Tidak dapat mengunci KBM pada tahun ajaran yang aktif!",
+                    400
+                )
+            );
         }
 
         if (identifiedTeachingGroup.subBranches.length === 0) {
-            return next(new HttpError('Kelas minimal harus ada 1 kelompok!', 400));
+            return next(
+                new HttpError("Kelas minimal harus ada 1 kelompok!", 400)
+            );
         }
 
         if (identifiedTeachingGroup.classes.length === 0) {
-            return next(new HttpError('Kelas minimal harus ada 1 kelas!', 400));
+            return next(new HttpError("Kelas minimal harus ada 1 kelas!", 400));
         }
 
         // Check if all classes are locked
-        const allClassesLocked = identifiedTeachingGroup.classes.every(cls => cls.isLocked === true);
+        const allClassesLocked = identifiedTeachingGroup.classes.every(
+            (cls) => cls.isLocked === true
+        );
         if (!allClassesLocked) {
-            return next(new HttpError('Semua kelas di dalam KBM harus dikunci terlebih dahulu!', 400));
+            return next(
+                new HttpError(
+                    "Semua kelas di dalam KBM harus dikunci terlebih dahulu!",
+                    400
+                )
+            );
         }
 
         identifiedTeachingGroup = await TeachingGroup.findByIdAndUpdate(
@@ -153,17 +204,17 @@ const lockTeachingGroupById = async (req, res, next) => {
             { isLocked: true },
             { new: true, runValidators: true }
         );
-
     } catch (err) {
         console.error(err);
-        return next(new HttpError('Gagal mengunci kelas!', 500));
+        return next(new HttpError("Gagal mengunci kelas!", 500));
     }
 
     console.log(`Locked teaching group with id ${teachingGroupId}`);
     res.json({
-        message: 'Berhasil mengunci KBM!', teachingGroup: identifiedTeachingGroup.toObject({ getters: true })
+        message: "Berhasil mengunci KBM!",
+        teachingGroup: identifiedTeachingGroup.toObject({ getters: true }),
     });
-}
+};
 
 const unlockTeachingGroupById = async (req, res, next) => {
     const { teachingGroupId } = req.body;
@@ -173,16 +224,28 @@ const unlockTeachingGroupById = async (req, res, next) => {
         identifiedTeachingGroup = await TeachingGroup.findById(teachingGroupId);
 
         if (!identifiedTeachingGroup) {
-            return next(new HttpError(`Could not find an Teaching Group with ID '${teachingGroupId}'`, 404));
+            return next(
+                new HttpError(
+                    `Could not find an Teaching Group with ID '${teachingGroupId}'`,
+                    404
+                )
+            );
         }
 
         // Check branchYearId.isActive
-        const branchYear = await BranchYear.findById(identifiedTeachingGroup.branchYearId);
+        const branchYear = await BranchYear.findById(
+            identifiedTeachingGroup.branchYearId
+        );
         if (!branchYear) {
-            return next(new HttpError('BranchYear tidak ditemukan!', 404));
+            return next(new HttpError("BranchYear tidak ditemukan!", 404));
         }
         if (branchYear.isActive) {
-            return next(new HttpError('Tidak dapat membuka KBM pada tahun ajaran yang aktif!', 400));
+            return next(
+                new HttpError(
+                    "Tidak dapat membuka KBM pada tahun ajaran yang aktif!",
+                    400
+                )
+            );
         }
 
         identifiedTeachingGroup = await TeachingGroup.findByIdAndUpdate(
@@ -190,45 +253,49 @@ const unlockTeachingGroupById = async (req, res, next) => {
             { isLocked: false },
             { new: true, runValidators: true }
         );
-
     } catch (err) {
         console.error(err);
-        return next(new HttpError('Gagal membuka kelas!', 500));
+        return next(new HttpError("Gagal membuka kelas!", 500));
     }
 
     console.log(`Unlocked teaching group with id ${teachingGroupId}`);
-    res.json({ message: 'Berhasil membuka KBM!', teachingGroup: identifiedTeachingGroup.toObject({ getters: true }) });
-}
+    res.json({
+        message: "Berhasil membuka KBM!",
+        teachingGroup: identifiedTeachingGroup.toObject({ getters: true }),
+    });
+};
 
 const deleteTeachingGroup = async (req, res, next) => {
     const { teachingGroupId } = req.body;
     if (!teachingGroupId) {
-        return next(new HttpError('teachingGroupId is required', 400));
+        return next(new HttpError("teachingGroupId is required", 400));
     }
 
     const session = await mongoose.startSession();
     session.startTransaction();
     try {
         // Find the teaching group
-        const teachingGroup = await TeachingGroup.findById(teachingGroupId).session(session);
+        const teachingGroup = await TeachingGroup.findById(
+            teachingGroupId
+        ).session(session);
         if (!teachingGroup) {
             await session.abortTransaction();
             session.endSession();
-            return next(new HttpError('Teaching group not found', 404));
+            return next(new HttpError("Teaching group not found", 404));
         }
 
         // Check if subBranches is not empty
         if (teachingGroup.subBranches && teachingGroup.subBranches.length > 0) {
             await session.abortTransaction();
             session.endSession();
-            return next(new HttpError('Terdapat Kelompok di KBM ini!', 400));
+            return next(new HttpError("Terdapat Kelompok di KBM ini!", 400));
         }
 
         // Check if classes is not empty
         if (teachingGroup.classes && teachingGroup.classes.length > 0) {
             await session.abortTransaction();
             session.endSession();
-            return next(new HttpError('Terdapat Kelas di KBM ini!', 400));
+            return next(new HttpError("Terdapat Kelas di KBM ini!", 400));
         }
 
         // Remove reference from BranchYear
@@ -243,14 +310,14 @@ const deleteTeachingGroup = async (req, res, next) => {
 
         await session.commitTransaction();
         session.endSession();
-        res.status(200).json({ message: 'Berhasil menghapus KBM!' });
+        res.status(200).json({ message: "Berhasil menghapus KBM!" });
     } catch (err) {
         await session.abortTransaction();
         session.endSession();
         console.error(err);
-        return next(new HttpError('Gagal menghapus KBM!', 500));
+        return next(new HttpError("Gagal menghapus KBM!", 500));
     }
-}
+};
 
 const removeSubBranchFromTeachingGroup = async (req, res, next) => {
     const { teachingGroupId, subBranchId } = req.body;
@@ -263,14 +330,14 @@ const removeSubBranchFromTeachingGroup = async (req, res, next) => {
         existingSubBranch = await SubBranch.findById(subBranchId);
     } catch (err) {
         console.log(err);
-        return next(new HttpError('Internal server error!', 500));
+        return next(new HttpError("Internal server error!", 500));
     }
 
     if (!existingTeachingGroup) {
-        return next(new HttpError('KBM tidak ditemukan!', 404));
+        return next(new HttpError("KBM tidak ditemukan!", 404));
     }
     if (!existingSubBranch) {
-        return next(new HttpError('Kelompok tidak ditemukan!', 404));
+        return next(new HttpError("Kelompok tidak ditemukan!", 404));
     }
 
     const normalizedSubBranchId = subBranchId.toString();
@@ -278,14 +345,14 @@ const removeSubBranchFromTeachingGroup = async (req, res, next) => {
 
     // Check if the sub-branch is associated with the teaching group
     const subBranchIndex = existingTeachingGroup.subBranches.findIndex(
-        sb => sb.toString() === normalizedSubBranchId
+        (sb) => sb.toString() === normalizedSubBranchId
     );
     const teachingGroupIndex = existingSubBranch.teachingGroups.findIndex(
-        tg => tg.toString() === normalizedTeachingGroupId
+        (tg) => tg.toString() === normalizedTeachingGroupId
     );
 
     if (subBranchIndex === -1 || teachingGroupIndex === -1) {
-        return next(new HttpError('Kelompok tidak terdaftar di KBM ini!', 400));
+        return next(new HttpError("Kelompok tidak terdaftar di KBM ini!", 400));
     }
 
     try {
@@ -303,11 +370,14 @@ const removeSubBranchFromTeachingGroup = async (req, res, next) => {
         await sess.commitTransaction();
     } catch (err) {
         console.log(err);
-        const error = new HttpError('Gagal menghapus kelompok dari KBM!', 500);
+        const error = new HttpError("Gagal menghapus kelompok dari KBM!", 500);
         return next(error);
     }
 
-    res.status(200).json({ message: `Berhasil menghapus kelompok dari KBM!`, teachingGroup: existingTeachingGroup });
+    res.status(200).json({
+        message: `Berhasil menghapus kelompok dari KBM!`,
+        teachingGroup: existingTeachingGroup,
+    });
 };
 
 const removeClassFromTeachingGroup = async (req, res, next) => {
@@ -321,19 +391,24 @@ const removeClassFromTeachingGroup = async (req, res, next) => {
         existingClass = await Class.findById(classId);
     } catch (err) {
         console.log(err);
-        return next(new HttpError('Internal server error!', 500));
+        return next(new HttpError("Internal server error!", 500));
     }
 
     if (!existingTeachingGroup) {
-        return next(new HttpError('KBM tidak ditemukan!', 404));
+        return next(new HttpError("KBM tidak ditemukan!", 404));
     }
     if (!existingClass) {
-        return next(new HttpError('Kelas tidak ditemukan!', 404));
+        return next(new HttpError("Kelas tidak ditemukan!", 404));
     }
 
     // Check if class has students or teachers
-    if ((existingClass.students && existingClass.students.length > 0) || (existingClass.teachers && existingClass.teachers.length > 0)) {
-        return next(new HttpError('Kelas masih memiliki siswa atau guru!', 400));
+    if (
+        (existingClass.students && existingClass.students.length > 0) ||
+        (existingClass.teachers && existingClass.teachers.length > 0)
+    ) {
+        return next(
+            new HttpError("Kelas masih memiliki siswa atau guru!", 400)
+        );
     }
 
     const normalizedClassId = classId.toString();
@@ -341,10 +416,13 @@ const removeClassFromTeachingGroup = async (req, res, next) => {
 
     // Check if the class is associated with the teaching group
     const classIndex = existingTeachingGroup.classes.findIndex(
-        c => c.toString() === normalizedClassId
+        (c) => c.toString() === normalizedClassId
     );
-    if (classIndex === -1 || existingClass.teachingGroupId.toString() !== normalizedTeachingGroupId) {
-        return next(new HttpError('Kelas tidak terdaftar di KBM ini!', 400));
+    if (
+        classIndex === -1 ||
+        existingClass.teachingGroupId.toString() !== normalizedTeachingGroupId
+    ) {
+        return next(new HttpError("Kelas tidak terdaftar di KBM ini!", 400));
     }
 
     try {
@@ -361,19 +439,20 @@ const removeClassFromTeachingGroup = async (req, res, next) => {
         await sess.commitTransaction();
     } catch (err) {
         console.log(err);
-        const error = new HttpError('Gagal menghapus kelas dari KBM!', 500);
+        const error = new HttpError("Gagal menghapus kelas dari KBM!", 500);
         return next(error);
     }
 
-    res.status(200).json({ message: `Berhasil menghapus kelas dari KBM!`, teachingGroup: existingTeachingGroup });
+    res.status(200).json({
+        message: `Berhasil menghapus kelas dari KBM!`,
+        teachingGroup: existingTeachingGroup,
+    });
 };
-
-
 
 exports.getTeachingGroups = getTeachingGroups;
 exports.getTeachingGroupById = getTeachingGroupById;
 exports.createTeachingGroup = createTeachingGroup;
-exports.registerSubBranchtoTeachingGroup = registerSubBranchtoTeachingGroup;
+exports.registerSubBranchToTeachingGroup = registerSubBranchToTeachingGroup;
 exports.lockTeachingGroupById = lockTeachingGroupById;
 exports.unlockTeachingGroupById = unlockTeachingGroupById;
 exports.deleteTeachingGroup = deleteTeachingGroup;

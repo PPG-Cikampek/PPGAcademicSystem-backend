@@ -1,22 +1,29 @@
-const express = require('express');
+const express = require("express");
 
-const teachingGroupController = require('../controllers/teachingGroups-controller.js')
+const teachingGroupController = require("../controllers/teachingGroups-controller.js");
 
 const router = express.Router();
 
-router.get('/', teachingGroupController.getTeachingGroups);
-router.get('/:teachingGroupId', teachingGroupController.getTeachingGroupById);
+router.get("/", teachingGroupController.getTeachingGroups);
+router.get("/:teachingGroupId", teachingGroupController.getTeachingGroupById);
 
-router.post('/', teachingGroupController.createTeachingGroup);
-router.post('/:teachingGroupId', teachingGroupController.registerSubBranchtoTeachingGroup);
+router.post("/", teachingGroupController.createTeachingGroup);
+router.post(
+    "/:teachingGroupId",
+    teachingGroupController.registerSubBranchToTeachingGroup
+);
 
-router.patch('/lock', teachingGroupController.lockTeachingGroupById);
-router.patch('/unlock', teachingGroupController.unlockTeachingGroupById);
+router.patch("/lock", teachingGroupController.lockTeachingGroupById);
+router.patch("/unlock", teachingGroupController.unlockTeachingGroupById);
 
-router.delete('/', teachingGroupController.deleteTeachingGroup);
-router.delete('/remove-sub-branch', teachingGroupController.removeSubBranchFromTeachingGroup);
-router.delete('/remove-class', teachingGroupController.removeClassFromTeachingGroup);
+router.delete("/", teachingGroupController.deleteTeachingGroup);
+router.delete(
+    "/remove-sub-branch",
+    teachingGroupController.removeSubBranchFromTeachingGroup
+);
+router.delete(
+    "/remove-class",
+    teachingGroupController.removeClassFromTeachingGroup
+);
 
-
-
-module.exports = router; 
+module.exports = router;

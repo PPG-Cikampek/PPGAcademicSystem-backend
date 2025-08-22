@@ -1,14 +1,14 @@
-const HttpError = require('../models/http-error')
-const mongoose = require('mongoose');
+const HttpError = require("../models/http-error");
+const mongoose = require("mongoose");
 
-const User = require('../models/user');
-const Branch = require('../models/branch');
-const SubBranch = require('../models/subBranch');
-const BranchYear = require('../models/branchYear');
-const AcademicYear = require('../models/academicYear')
-const Class = require('../models/class')
-const TeachingGroup = require('../models/teachingGroup');
-const Score = require('../models/score');
+const User = require("../models/user");
+const Branch = require("../models/branch");
+const SubBranch = require("../models/subBranch");
+const BranchYear = require("../models/branchYear");
+const AcademicYear = require("../models/academicYear");
+const Class = require("../models/class");
+const TeachingGroup = require("../models/teachingGroup");
+const Score = require("../models/score");
 
 const getBranchYears = async (req, res, next) => {
     const { populate } = req.query;
@@ -16,12 +16,12 @@ const getBranchYears = async (req, res, next) => {
     let branchYears;
 
     try {
-        if (populate === 'semesters') {
-            branchYears = await BranchYear.find().populate('semesters');
-        } else if (populate === 'branchId') {
+        if (populate === "semesters") {
+            branchYears = await BranchYear.find().populate("semesters");
+        } else if (populate === "branchId") {
             branchYears = await BranchYear.find()
-                .populate({ path: 'branchId', select: 'name' })
-                .populate({ path: 'academicYearId', select: 'name' })
+                .populate({ path: "branchId", select: "name" })
+                .populate({ path: "academicYearId", select: "name" });
 
             // Sort after population
             branchYears = branchYears.sort((a, b) => {
@@ -37,8 +37,10 @@ const getBranchYears = async (req, res, next) => {
         return next(new HttpError("Internal server error occurred!", 500));
     }
 
-    console.log('Get branchYears requested');
-    res.json({ branchYears: branchYears.map(x => x.toObject({ getters: true })) });
+    console.log("Get branchYears requested");
+    res.json({
+        branchYears: branchYears.map((x) => x.toObject({ getters: true })),
+    });
 };
 
 const getBranchYearById = async (req, res, next) => {
@@ -47,12 +49,13 @@ const getBranchYearById = async (req, res, next) => {
 
     let identifiedBranchYears;
     try {
-        if (populate === 'subBranches') {
-            identifiedBranchYears = await BranchYear.findById(branchYearId)
-                .populate({
-                    path: 'teachingGroups',
-                    populate: { path: 'subBranches' }
-                });
+        if (populate === "subBranches") {
+            identifiedBranchYears = await BranchYear.findById(
+                branchYearId
+            ).populate({
+                path: "teachingGroups",
+                populate: { path: "subBranches" },
+            });
         } else {
             identifiedBranchYears = await BranchYear.findById(branchYearId);
         }
@@ -62,11 +65,49 @@ const getBranchYearById = async (req, res, next) => {
     }
 
     if (!identifiedBranchYears) {
-        return next(new HttpError(`BranchYear with ID '${branchYearId}' not found!`, 404));
+        return next(
+            new HttpError(
+                `BranchYear with ID '${branchYearId}' not found!`,
+                404
+            )
+        );
     }
 
     console.log(`Get branchYearById of ID '${branchYearId}' requested`);
     res.json({ branchYear: identifiedBranchYears.toObject({ getters: true }) });
+};
+
+const getTeachingGroupsByAcademicYearId = async (req, res, next) => {
+    const academicYearId = req.params.academicYearId;
+
+    try {
+        const branchYears = await BranchYear.find({ academicYearId }).select(
+            "_id"
+        );
+        const branchYearIds = branchYears.map((by) => by._id);
+
+        const teachingGroups = await TeachingGroup.find({
+            branchYearId: { $in: branchYearIds },
+        });
+
+        if (!teachingGroups || teachingGroups.length === 0) {
+            return next(
+                new HttpError(
+                    `No teaching groups found for academic year with ID ${academicYearId}`,
+                    404
+                )
+            );
+        }
+
+        res.status(200).json({
+            teachingGroups: teachingGroups.map((x) =>
+                x.toObject({ getters: true })
+            ),
+        });
+    } catch (err) {
+        console.error(err);
+        return next(new HttpError("Internal server error occurred!", 500));
+    }
 };
 
 const getBranchYearByAcademicYearIdAndBranchId = async (req, res, next) => {
@@ -76,19 +117,19 @@ const getBranchYearByAcademicYearIdAndBranchId = async (req, res, next) => {
 
     try {
         branchYear = await BranchYear.findOne({ academicYearId, branchId })
-            .populate({ path: 'branchId', select: 'name' })
-            .populate({ path: 'academicYearId', select: ['name', 'isActive'] })
-            .populate({ path: 'classes' });
+            .populate({ path: "branchId", select: "name" })
+            .populate({ path: "academicYearId", select: ["name", "isActive"] })
+            .populate({ path: "classes" });
     } catch (err) {
         console.error(err);
         return next(new HttpError("Internal server error occurred!", 500));
     }
 
     if (!branchYear) {
-        return next(new HttpError('Tahun ajaran tidak ditemukan!', 404));
+        return next(new HttpError("Tahun ajaran tidak ditemukan!", 404));
     }
 
-    console.log('Get getBranchYearByAcademicYearIdAndBranchId requested');
+    console.log("Get getBranchYearByAcademicYearIdAndBranchId requested");
     res.json({ branchYear: branchYear.toObject({ getters: true }) });
 };
 
@@ -99,25 +140,28 @@ const getBranchYearsByBranchId = async (req, res, next) => {
 
     try {
         branchYears = await BranchYear.find({ branchId })
-            .populate({ path: 'branchId', select: 'name' })
-            .populate({ path: 'academicYearId', select: ['name', 'isActive', 'munaqasyahStatus'] })
-            .populate({ path: 'teachingGroups' })
+            .populate({ path: "branchId", select: "name" })
+            .populate({
+                path: "academicYearId",
+                select: ["name", "isActive", "munaqasyahStatus"],
+            })
+            .populate({ path: "teachingGroups" });
 
         branchYears = branchYears.sort((a, b) => {
             const nameA = a.academicYearId?.name || "";
             const nameB = b.academicYearId?.name || "";
             return nameB.localeCompare(nameA);
         });
-
     } catch (err) {
         console.error(err);
         return next(new HttpError("Internal server error occurred!", 500));
     }
 
-    console.log('Get branchYears requested');
-    res.json({ branchYears: branchYears.map(x => x.toObject({ getters: true })) });
+    console.log("Get branchYears requested");
+    res.json({
+        branchYears: branchYears.map((x) => x.toObject({ getters: true })),
+    });
 };
-
 
 const getBranchYearsByBranchIdForSubBranchId = async (req, res, next) => {
     const branchId = req.params.branchId;
@@ -127,11 +171,14 @@ const getBranchYearsByBranchIdForSubBranchId = async (req, res, next) => {
         // Get the subBranch document
         const subBranch = await SubBranch.findById(subBranchId);
         if (!subBranch) {
-            return next(new HttpError('SubBranch not found!', 404));
+            return next(new HttpError("SubBranch not found!", 404));
         }
 
         // 1. Find all BranchYear for the branchId
-        const branchYears = await BranchYear.find({ branchId }).populate({ path: 'academicYearId', select: 'munaqasyahStatus' });
+        const branchYears = await BranchYear.find({ branchId }).populate({
+            path: "academicYearId",
+            select: "munaqasyahStatus",
+        });
         if (!branchYears.length) {
             return res.json({ subBranchYears: [] });
         }
@@ -141,20 +188,22 @@ const getBranchYearsByBranchIdForSubBranchId = async (req, res, next) => {
         for (const branchYear of branchYears) {
             const teachingGroups = await TeachingGroup.find({
                 branchYearId: branchYear._id,
-                subBranches: subBranchId
-            })
+                subBranches: subBranchId,
+            });
 
             // 3. For each TeachingGroup, find Classes
             let classes = [];
             for (const tg of teachingGroups) {
-                const groupClasses = await Class.find({ teachingGroupId: tg._id });
+                const groupClasses = await Class.find({
+                    teachingGroupId: tg._id,
+                });
                 classes = classes.concat(groupClasses);
             }
 
             // Only include subBranch for active branchYear
             const resultObj = {
                 branchYear: branchYear.toObject({ getters: true }),
-                classes: classes.map(cls => cls.toObject({ getters: true }))
+                classes: classes.map((cls) => cls.toObject({ getters: true })),
             };
             if (branchYear.isActive) {
                 resultObj.subBranch = subBranch.toObject({ getters: true });
@@ -172,7 +221,7 @@ const getBranchYearsByBranchIdForSubBranchId = async (req, res, next) => {
         res.json({ subBranchYears: result });
     } catch (err) {
         console.error(err);
-        return next(new HttpError('Internal server error occurred!', 500));
+        return next(new HttpError("Internal server error occurred!", 500));
     }
 };
 
@@ -183,33 +232,40 @@ const registerYearToBranch = async (req, res, next) => {
     let existingAcademicYear;
     let existingBranch;
     try {
-        existingAcademicYear = await AcademicYear.findById(academicYearId)
-        existingBranch = await Branch.findById(branchId)
+        existingAcademicYear = await AcademicYear.findById(academicYearId);
+        existingBranch = await Branch.findById(branchId);
     } catch (err) {
         console.log(err);
-        return next(new HttpError('Internal server error!', 500));
+        return next(new HttpError("Internal server error!", 500));
     }
 
     if (!existingAcademicYear) {
-        return next(new HttpError('Tahun ajaran tidak ditemukan!', 500));
+        return next(new HttpError("Tahun ajaran tidak ditemukan!", 500));
     }
     if (!existingBranch) {
-        return next(new HttpError('Kelompok ajaran tidak ditemukan!', 500));
+        return next(new HttpError("Kelompok ajaran tidak ditemukan!", 500));
     }
 
     // checking exsisting branchYear document
     let existingBranchYear;
     try {
-        existingBranchYear = await BranchYear.findOne({ academicYearId, branchId })
+        existingBranchYear = await BranchYear.findOne({
+            academicYearId,
+            branchId,
+        });
     } catch (err) {
         console.log(err);
-        return next(new HttpError('Internal server error!', 500));
+        return next(new HttpError("Internal server error!", 500));
     }
 
     if (existingBranchYear) {
-        return next(new HttpError('Tahun ajaran sudah terdaftar untuk Kelompok ini!', 500));
+        return next(
+            new HttpError(
+                "Tahun ajaran sudah terdaftar untuk Kelompok ini!",
+                500
+            )
+        );
     }
-
 
     const createdBranchYear = new BranchYear({
         name,
@@ -217,12 +273,12 @@ const registerYearToBranch = async (req, res, next) => {
         branchId,
         isActive: false,
         munaqasyahStatus: "notStarted",
-        teachingGroups: []
-    })
+        teachingGroups: [],
+    });
 
     try {
         const sess = await mongoose.startSession();
-        sess.startTransaction()
+        sess.startTransaction();
         await createdBranchYear.save({ session: sess });
         existingBranch.branchYears.push(createdBranchYear);
         existingAcademicYear.branchYears.push(createdBranchYear);
@@ -231,13 +287,15 @@ const registerYearToBranch = async (req, res, next) => {
         await sess.commitTransaction();
     } catch (err) {
         console.log(err);
-        const error = new HttpError('Gagal menambahkan tahun ajaran!', 500);
+        const error = new HttpError("Gagal menambahkan tahun ajaran!", 500);
         return next(error);
     }
 
-    res.status(202).json({ message: `Berhasil menambahkan tahun ajaran!`, branchYear: createdBranchYear });
-
-}
+    res.status(202).json({
+        message: `Berhasil menambahkan tahun ajaran!`,
+        branchYear: createdBranchYear,
+    });
+};
 
 const deleteBranchYear = async (req, res, next) => {
     const { branchYearId } = req.body;
@@ -245,21 +303,30 @@ const deleteBranchYear = async (req, res, next) => {
     // Find the branchYear to delete
     let existingBranchYear;
     try {
-        existingBranchYear = await BranchYear.findById(branchYearId).populate('branchId').populate('academicYearId');
+        existingBranchYear = await BranchYear.findById(branchYearId)
+            .populate("branchId")
+            .populate("academicYearId");
     } catch (err) {
         console.log(err);
-        return next(new HttpError('Internal server error while finding active year!', 500));
+        return next(
+            new HttpError(
+                "Internal server error while finding active year!",
+                500
+            )
+        );
     }
 
     if (!existingBranchYear) {
-        return next(new HttpError('Branch year not found!', 404));
+        return next(new HttpError("Branch year not found!", 404));
     }
 
     // Extract associated branch and academicYear
     const { branchId, academicYearId } = existingBranchYear;
 
     if (!branchId || !academicYearId) {
-        return next(new HttpError('Associated branch or academicYear not found!', 500));
+        return next(
+            new HttpError("Associated branch or academicYear not found!", 500)
+        );
     }
 
     try {
@@ -278,10 +345,10 @@ const deleteBranchYear = async (req, res, next) => {
         await sess.commitTransaction();
     } catch (err) {
         console.log(err);
-        return next(new HttpError('Gagal menghapus tahun ajaran!', 500));
+        return next(new HttpError("Gagal menghapus tahun ajaran!", 500));
     }
 
-    res.status(200).json({ message: 'Berhasil menghapus tahun ajaran!' });
+    res.status(200).json({ message: "Berhasil menghapus tahun ajaran!" });
 };
 
 // const updateBranchYear = async (req, res, next) => {
@@ -315,24 +382,39 @@ const activateBranchYear = async (req, res, next) => {
     let identifiedBranchYear;
     try {
         // Fetch the BranchYear and populate the classes to check their isLocked status
-        identifiedBranchYear = await BranchYear.findById(branchYearId).populate({
-            path: 'teachingGroups',
-            select: 'isLocked'
-        });
+        identifiedBranchYear = await BranchYear.findById(branchYearId).populate(
+            {
+                path: "teachingGroups",
+                select: "isLocked",
+            }
+        );
 
         if (!identifiedBranchYear) {
-            return next(new HttpError(`Could not find an BranchYear with ID '${branchYearId}'`, 404));
+            return next(
+                new HttpError(
+                    `Could not find an BranchYear with ID '${branchYearId}'`,
+                    404
+                )
+            );
         }
 
         if (identifiedBranchYear.teachingGroups.length === 0) {
-            return next(new HttpError('Tidak ada kelas yang terdaftar untuk tahun ajaran ini!', 400));
+            return next(
+                new HttpError(
+                    "Tidak ada kelas yang terdaftar untuk tahun ajaran ini!",
+                    400
+                )
+            );
         }
 
         // Check if any class is not locked
-        const hasUnlockedTeachingGroups = identifiedBranchYear.teachingGroups.some(tg => !tg.isLocked);
+        const hasUnlockedTeachingGroups =
+            identifiedBranchYear.teachingGroups.some((tg) => !tg.isLocked);
 
         if (hasUnlockedTeachingGroups) {
-            return next(new HttpError('Semua KBM harus dikunci terlebih dahulu!', 400));
+            return next(
+                new HttpError("Semua KBM harus dikunci terlebih dahulu!", 400)
+            );
         }
 
         // Proceed with updating the BranchYear if all classes are locked
@@ -343,13 +425,18 @@ const activateBranchYear = async (req, res, next) => {
         );
     } catch (err) {
         console.error(err);
-        return next(new HttpError('Something went wrong while updating the BranchYear.', 500));
+        return next(
+            new HttpError(
+                "Something went wrong while updating the BranchYear.",
+                500
+            )
+        );
     }
 
     console.log(`BranchYear: '${identifiedBranchYear.name}' updated!`);
     res.status(200).json({
-        message: 'Berhasil mengaktifkan tahun ajaran!',
-        branchYear: identifiedBranchYear.toObject({ getters: true })
+        message: "Berhasil mengaktifkan tahun ajaran!",
+        branchYear: identifiedBranchYear.toObject({ getters: true }),
     });
 };
 
@@ -366,18 +453,27 @@ const deactivateBranchYear = async (req, res, next) => {
         );
 
         if (!identifiedBranchYear) {
-            return next(new HttpError(`Could not find an BranchYear with ID '${branchYearId}'`, 404));
+            return next(
+                new HttpError(
+                    `Could not find an BranchYear with ID '${branchYearId}'`,
+                    404
+                )
+            );
         }
-
     } catch (err) {
         console.error(err);
-        return next(new HttpError('Something went wrong while updating the BranchYear.', 500));
+        return next(
+            new HttpError(
+                "Something went wrong while updating the BranchYear.",
+                500
+            )
+        );
     }
 
     console.log(`BranchYear: '${identifiedBranchYear.name}' updated!`);
     res.status(200).json({
-        message: 'Berhasil menonaktifkan tahun ajaran!',
-        branchYear: identifiedBranchYear.toObject({ getters: true })
+        message: "Berhasil menonaktifkan tahun ajaran!",
+        branchYear: identifiedBranchYear.toObject({ getters: true }),
     });
 };
 
@@ -387,13 +483,20 @@ const patchBranchYearMunaqasyahStatus = async (req, res, next) => {
     let identifiedBranchYear;
     try {
         // Fetch the BranchYear with teachingGroups and their subBranches
-        identifiedBranchYear = await BranchYear.findById(branchYearId).populate({
-            path: 'teachingGroups',
-            populate: { path: 'subBranches' }
-        });
+        identifiedBranchYear = await BranchYear.findById(branchYearId).populate(
+            {
+                path: "teachingGroups",
+                populate: { path: "subBranches" },
+            }
+        );
 
         if (!identifiedBranchYear) {
-            return next(new HttpError(`Could not find an BranchYear with ID '${branchYearId}'`, 404));
+            return next(
+                new HttpError(
+                    `Could not find an BranchYear with ID '${branchYearId}'`,
+                    404
+                )
+            );
         }
 
         if (identifiedBranchYear.isActive === false) {
@@ -401,18 +504,25 @@ const patchBranchYearMunaqasyahStatus = async (req, res, next) => {
         }
 
         // Collect all subBranches from all teachingGroups
-        const allSubBranches = identifiedBranchYear.teachingGroups
-            .flatMap(tg => tg.subBranches || []);
+        const allSubBranches = identifiedBranchYear.teachingGroups.flatMap(
+            (tg) => tg.subBranches || []
+        );
 
         // Remove duplicates (by _id)
         const uniqueSubBranches = Array.from(
-            new Map(allSubBranches.map(sb => [sb._id.toString(), sb])).values()
+            new Map(
+                allSubBranches.map((sb) => [sb._id.toString(), sb])
+            ).values()
         );
 
         // Check if any subBranch has munaqasyahStatus === 'inProgress'
-        const hasInProgress = uniqueSubBranches.some(sb => sb.munaqasyahStatus === 'inProgress');
+        const hasInProgress = uniqueSubBranches.some(
+            (sb) => sb.munaqasyahStatus === "inProgress"
+        );
         if (hasInProgress) {
-            return next(new HttpError('Terdapat kelompok yang masih munaqosah!', 400));
+            return next(
+                new HttpError("Terdapat kelompok yang masih munaqosah!", 400)
+            );
         }
 
         // All clear, update munaqasyahStatus
@@ -421,19 +531,22 @@ const patchBranchYearMunaqasyahStatus = async (req, res, next) => {
             { munaqasyahStatus: action },
             { new: true, runValidators: true }
         );
-
     } catch (err) {
         console.error(err);
-        return next(new HttpError('Something went wrong while updating the BranchYear.', 500));
+        return next(
+            new HttpError(
+                "Something went wrong while updating the BranchYear.",
+                500
+            )
+        );
     }
 
     console.log(`BranchYear: '${identifiedBranchYear.name}' updated!`);
     res.status(200).json({
-        message: 'Berhasil mengupdate status munaqosah tahun ajaran!',
-        branchYear: identifiedBranchYear.toObject({ getters: true })
+        message: "Berhasil mengupdate status munaqosah tahun ajaran!",
+        branchYear: identifiedBranchYear.toObject({ getters: true }),
     });
 };
-
 
 const patchSubBranchMunaqasyahStatus = async (req, res, next) => {
     const branchYearId = req.params.branchYearId;
@@ -445,27 +558,28 @@ const patchSubBranchMunaqasyahStatus = async (req, res, next) => {
     let subBranch;
     try {
         // Fetch the branchYear with teachingGroups, classes, and students (with userId populated)
-        existingBranchYear = await BranchYear.findById(branchYearId)
-            .populate({
-                path: 'teachingGroups',
-                populate: [
-                    {
-                        path: 'classes',
-                        populate: {
-                            path: 'students',
-                            populate: { path: 'userId', select: 'subBranchId' }
-                        }
+        existingBranchYear = await BranchYear.findById(branchYearId).populate({
+            path: "teachingGroups",
+            populate: [
+                {
+                    path: "classes",
+                    populate: {
+                        path: "students",
+                        populate: { path: "userId", select: "subBranchId" },
                     },
-                    { path: 'subBranches' }
-                ]
-            });
+                },
+                { path: "subBranches" },
+            ],
+        });
 
         if (!existingBranchYear) {
-            return next(new HttpError("Tahun Ajaran Desa tidak ditemukan!", 404));
+            return next(
+                new HttpError("Tahun Ajaran Desa tidak ditemukan!", 404)
+            );
         }
 
         // Check munaqasyahStatus of branchYear
-        if (existingBranchYear.munaqasyahStatus !== 'inProgress') {
+        if (existingBranchYear.munaqasyahStatus !== "inProgress") {
             return next(new HttpError("Munaqasyah Desa belum dimulai!", 400));
         }
 
@@ -475,31 +589,52 @@ const patchSubBranchMunaqasyahStatus = async (req, res, next) => {
             return next(new HttpError("SubBranch tidak ditemukan!", 404));
         }
 
-        if (subBranch.munaqasyahStatus === 'notStarted') {
-            console.log("Starting to process teaching groups for subBranch:", subBranchId);
-
-            // Find all teachingGroups in this branchYear that include this subBranch
-            const relevantTeachingGroups = existingBranchYear.teachingGroups.filter(tg =>
-                tg.subBranches && tg.subBranches.some(sb => sb && sb._id.toString() === subBranchId)
+        if (subBranch.munaqasyahStatus === "notStarted") {
+            console.log(
+                "Starting to process teaching groups for subBranch:",
+                subBranchId
             );
 
-            console.log("Relevant teaching groups found:", relevantTeachingGroups);
+            // Find all teachingGroups in this branchYear that include this subBranch
+            const relevantTeachingGroups =
+                existingBranchYear.teachingGroups.filter(
+                    (tg) =>
+                        tg.subBranches &&
+                        tg.subBranches.some(
+                            (sb) => sb && sb._id.toString() === subBranchId
+                        )
+                );
+
+            console.log(
+                "Relevant teaching groups found:",
+                relevantTeachingGroups
+            );
 
             // For each relevant teachingGroup, get all students in its classes that belong to this subBranch
-            const scoreEntries = relevantTeachingGroups.flatMap(tg => {
+            const scoreEntries = relevantTeachingGroups.flatMap((tg) => {
                 console.log("Processing teaching group:", tg._id);
 
-                return (tg.classes || []).flatMap(classObj => {
+                return (tg.classes || []).flatMap((classObj) => {
                     console.log("Processing class:", classObj._id);
 
                     return (classObj.students || [])
-                        .filter(student => {
-                            const belongsToSubBranch = student.userId && student.userId.subBranchId && student.userId.subBranchId.toString() === subBranchId;
-                            console.log(`Student ${student._id} belongs to subBranch:`, belongsToSubBranch);
+                        .filter((student) => {
+                            const belongsToSubBranch =
+                                student.userId &&
+                                student.userId.subBranchId &&
+                                student.userId.subBranchId.toString() ===
+                                    subBranchId;
+                            console.log(
+                                `Student ${student._id} belongs to subBranch:`,
+                                belongsToSubBranch
+                            );
                             return belongsToSubBranch;
                         })
-                        .map(student => {
-                            console.log("Creating score entry for student:", student._id);
+                        .map((student) => {
+                            console.log(
+                                "Creating score entry for student:",
+                                student._id
+                            );
                             return {
                                 userId: student.userId._id,
                                 studentId: student._id,
@@ -512,15 +647,33 @@ const patchSubBranchMunaqasyahStatus = async (req, res, next) => {
                                 reciting: { score: 0, examinerUserId: null },
                                 writing: { score: 0, examinerUserId: null },
                                 quranTafsir: { score: 0, examinerUserId: null },
-                                hadithTafsir: { score: 0, examinerUserId: null },
+                                hadithTafsir: {
+                                    score: 0,
+                                    examinerUserId: null,
+                                },
                                 practice: { score: 0, examinerUserId: null },
                                 moralManner: { score: 0, examinerUserId: null },
-                                memorizingSurah: { score: 0, examinerUserId: null },
-                                memorizingHadith: { score: 0, examinerUserId: null },
-                                memorizingDua: { score: 0, examinerUserId: null },
-                                memorizingBeautifulName: { score: 0, examinerUserId: null },
+                                memorizingSurah: {
+                                    score: 0,
+                                    examinerUserId: null,
+                                },
+                                memorizingHadith: {
+                                    score: 0,
+                                    examinerUserId: null,
+                                },
+                                memorizingDua: {
+                                    score: 0,
+                                    examinerUserId: null,
+                                },
+                                memorizingBeautifulName: {
+                                    score: 0,
+                                    examinerUserId: null,
+                                },
                                 knowledge: { score: 0, examinerUserId: null },
-                                independence: { score: 0, examinerUserId: null }
+                                independence: {
+                                    score: 0,
+                                    examinerUserId: null,
+                                },
                             };
                         });
                 });
@@ -534,30 +687,36 @@ const patchSubBranchMunaqasyahStatus = async (req, res, next) => {
         subBranch.munaqasyahStatus = munaqasyahStatus;
         await subBranch.save();
 
-        console.log(`changed munaqasyah status for subBranch with id ${subBranchId}`);
+        console.log(
+            `changed munaqasyah status for subBranch with id ${subBranchId}`
+        );
         res.json({
-            message: munaqasyahStatus === 'inProgress' ? 'Munaqosah Kelompok dimulai!' : 'Munaqosah Kelompok selesai!',
+            message:
+                munaqasyahStatus === "inProgress"
+                    ? "Munaqosah Kelompok dimulai!"
+                    : "Munaqosah Kelompok selesai!",
             subBranch,
-            branchYear: existingBranchYear.toObject({ getters: true })
+            branchYear: existingBranchYear.toObject({ getters: true }),
         });
-
     } catch (err) {
         console.error(err);
         return next(new HttpError("Internal server error occurred!", 500));
     }
 };
 
-
-exports.getBranchYearById = getBranchYearById
-exports.getBranchYearByAcademicYearIdAndBranchId = getBranchYearByAcademicYearIdAndBranchId
-exports.getBranchYearsByBranchIdForSubBranchId = getBranchYearsByBranchIdForSubBranchId
-exports.getBranchYears = getBranchYears
-exports.getBranchYearsByBranchId = getBranchYearsByBranchId
-exports.registerYearToBranch = registerYearToBranch
-exports.deleteBranchYear = deleteBranchYear
+exports.getBranchYearById = getBranchYearById;
+exports.getTeachingGroupsByAcademicYearId = getTeachingGroupsByAcademicYearId;
+exports.getBranchYearByAcademicYearIdAndBranchId =
+    getBranchYearByAcademicYearIdAndBranchId;
+exports.getBranchYearsByBranchIdForSubBranchId =
+    getBranchYearsByBranchIdForSubBranchId;
+exports.getBranchYears = getBranchYears;
+exports.getBranchYearsByBranchId = getBranchYearsByBranchId;
+exports.registerYearToBranch = registerYearToBranch;
+exports.deleteBranchYear = deleteBranchYear;
 // exports.updateBranchYear = updateBranchYear
-exports.activateBranchYear = activateBranchYear
-exports.deactivateBranchYear = deactivateBranchYear
+exports.activateBranchYear = activateBranchYear;
+exports.deactivateBranchYear = deactivateBranchYear;
 
-exports.patchBranchYearMunaqasyahStatus = patchBranchYearMunaqasyahStatus
-exports.patchSubBranchMunaqasyahStatus = patchSubBranchMunaqasyahStatus
+exports.patchBranchYearMunaqasyahStatus = patchBranchYearMunaqasyahStatus;
+exports.patchSubBranchMunaqasyahStatus = patchSubBranchMunaqasyahStatus;
