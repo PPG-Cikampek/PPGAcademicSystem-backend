@@ -1,29 +1,35 @@
-const HttpError = require('../models/http-error')
-const mongoose = require('mongoose');
+const HttpError = require("../models/http-error");
+const mongoose = require("mongoose");
 
-const User = require('../models/user');
-const Branch = require('../models/branch');
-const SubBranch = require('../models/subBranch');
-const TeachingGroup = require('../models/teachingGroup');
-const AcademicYear = require('../models/academicYear')
-const Class = require('../models/class')
-const TeachingGroupYear = require('../models/teachingGroupYear')
-const Teacher = require('../models/teacher')
+const User = require("../models/user");
+const Branch = require("../models/branch");
+const SubBranch = require("../models/subBranch");
+const TeachingGroup = require("../models/teachingGroup");
+const AcademicYear = require("../models/academicYear");
+const Class = require("../models/class");
+const TeachingGroupYear = require("../models/teachingGroupYear");
+const Teacher = require("../models/teacher");
 
 const getTeachers = async (req, res, next) => {
     let teachers;
     try {
-        teachers = await Teacher.find()
-            .populate({ path: 'userId', select: 'subBranchId', populate: { path: 'subBranchId', select: 'name', populate: { path: 'branchId', select: 'name' } } });
-
+        teachers = await Teacher.find().populate({
+            path: "userId",
+            select: "subBranchId",
+            populate: {
+                path: "subBranchId",
+                select: "name",
+                populate: { path: "branchId", select: "name" },
+            },
+        });
     } catch (err) {
         console.error(err);
         return next(new HttpError("Internal server error occurred!", 500));
     }
 
-    console.log('Get teachers requested');
-    res.json({ teachers: teachers.map(x => x.toObject({ getters: true })) });
-}
+    console.log("Get teachers requested");
+    res.json({ teachers: teachers.map((x) => x.toObject({ getters: true })) });
+};
 
 const getTeachersByBranchId = async (req, res, next) => {
     const branchId = req.params.branchId;
@@ -32,36 +38,35 @@ const getTeachersByBranchId = async (req, res, next) => {
     try {
         // 1. Find subBranches with the given branchId
         const subBranches = await SubBranch.find({ branchId: branchId });
-        const subBranchIds = subBranches.map(sb => sb._id);
+        const subBranchIds = subBranches.map((sb) => sb._id);
 
         // 2. Find users with subBranchId in subBranchIds
         const users = await User.find({ subBranchId: { $in: subBranchIds } });
 
         // 3. Extract user IDs
-        const userIds = users.map(user => user._id);
+        const userIds = users.map((user) => user._id);
 
         // 4. Find teachers based on user IDs
         teachers = await Teacher.find({ userId: { $in: userIds } })
             .populate({
-                path: 'userId',
-                select: 'subBranchId',
+                path: "userId",
+                select: "subBranchId",
                 populate: {
-                    path: 'subBranchId',
-                    select: 'name',
+                    path: "subBranchId",
+                    select: "name",
                     populate: {
-                        path: 'branchId',
-                        select: 'name'
-                    }
-                }
+                        path: "branchId",
+                        select: "name",
+                    },
+                },
             })
-            .sort({ nis: 1 })
-
+            .sort({ nis: 1 });
     } catch (err) {
-        console.log(err)
-        return next(new HttpError("Internal server error occured!", 500))
+        console.log(err);
+        return next(new HttpError("Internal server error occured!", 500));
     }
-    console.log('Get teachers by branch ID requested')
-    res.json({ teachers })
+    console.log("Get teachers by branch ID requested");
+    res.json({ teachers });
 };
 
 const getTeachersBySubBranchId = async (req, res, next) => {
@@ -72,32 +77,32 @@ const getTeachersBySubBranchId = async (req, res, next) => {
         const users = await User.find({ subBranchId: subBranchId });
 
         // 2. Extract User IDs
-        const userIds = users.map(user => user._id);
+        const userIds = users.map((user) => user._id);
 
         // 3. Find teachers based on user IDs
         teachers = await Teacher.find({ userId: { $in: userIds } })
             .populate({
-                path: 'userId',
-                select: 'subBranchId',
+                path: "userId",
+                select: "subBranchId",
                 populate: {
-                    path: 'subBranchId',
-                    select: 'name',
+                    path: "subBranchId",
+                    select: "name",
                     populate: {
-                        path: 'branchId',
-                        select: 'name'
-                    }
-                }
+                        path: "branchId",
+                        select: "name",
+                    },
+                },
             })
-            .populate({ path: 'classIds', select: 'name' })
+            .populate({ path: "classIds", select: "name" })
             .sort({ nis: 1 });
     } catch (err) {
         console.error(err);
         return next(new HttpError("Internal server error occurred!", 500));
     }
 
-    console.log('Get teachers requested');
-    res.json({ teachers: teachers.map(x => x.toObject({ getters: true })) });
-}
+    console.log("Get teachers requested");
+    res.json({ teachers: teachers.map((x) => x.toObject({ getters: true })) });
+};
 
 const getTeacherById = async (req, res, next) => {
     const teacherId = req.params.teacherId;
@@ -106,19 +111,27 @@ const getTeacherById = async (req, res, next) => {
 
     try {
         teacher = await Teacher.findById(teacherId)
-            .populate({ path: 'userId', select: 'subBranchId', populate: { path: 'subBranchId', select: 'name', populate: { path: 'branchId', select: 'name' } } })
             .populate({
-                path: 'classIds',
-                populate: { path: 'teachingGroupId' }
+                path: "userId",
+                select: "subBranchId",
+                populate: {
+                    path: "subBranchId",
+                    select: "name",
+                    populate: { path: "branchId", select: "name" },
+                },
             })
+            .populate({
+                path: "classIds",
+                populate: { path: "teachingGroupId" },
+            });
     } catch (err) {
         console.error(err);
         return next(new HttpError("Internal server error occurred!", 500));
     }
 
-    console.log('Get teacher requested');
+    console.log("Get teacher requested");
     res.json({ teacher: teacher.toObject({ getters: true }) });
-}
+};
 
 const getTeacherByUserId = async (req, res, next) => {
     const userId = req.params.userId;
@@ -127,31 +140,100 @@ const getTeacherByUserId = async (req, res, next) => {
 
     try {
         teacher = await Teacher.findOne({ userId })
-            .populate({ path: 'userId', select: 'subBranchId', populate: { path: 'subBranchId', select: 'name', populate: { path: 'branchId', select: 'name' } } })
             .populate({
-                path: 'classIds',
+                path: "userId",
+                select: "subBranchId",
+                populate: {
+                    path: "subBranchId",
+                    select: "name",
+                    populate: { path: "branchId", select: "name" },
+                },
+            })
+            .populate({
+                path: "classIds",
                 populate: [
-                    { path: 'teachingGroupId', populate: { path: 'branchYearId', populate: { path: 'academicYearId', select: ['name', 'isActive'] } } },
-                    // { path: 'attendances', select: 'forDate' }
-                ]
+                    {
+                        path: "teachingGroupId",
+                        populate: {
+                            path: "branchYearId",
+                            populate: {
+                                path: "academicYearId",
+                                select: ["name", "isActive"],
+                            },
+                        },
+                    },
+                ],
             });
     } catch (err) {
         console.error(err);
         return next(new HttpError("Internal server error occurred!", 500));
     }
 
+    // If teacher or classIds not found, return as usual
+    if (!teacher) {
+        return next(new HttpError("Teacher not found!", 404));
+    }
+
+    // Get attendance count for each classId
+    const Attendance = require("../models/attendance");
+    const teacherObj = teacher.toObject({ getters: true });
+    if (teacherObj.classIds && Array.isArray(teacherObj.classIds)) {
+        // Filter classIds to only those with isActive academic year
+        const filteredClassIds = teacherObj.classIds.filter((cls) => {
+            const tg = cls.teachingGroupId;
+            const by = tg?.branchYearId;
+            const ay = by?.academicYearId;
+            return ay?.isActive === true;
+        });
+        // Use Promise.all to fetch counts in parallel
+        const classIdsWithAttendance = await Promise.all(
+            filteredClassIds.map(async (cls) => {
+                // cls._id is the classId
+                const result = await Attendance.aggregate([
+                    { $match: { classId: cls._id } },
+                    { $group: { _id: "$forDate" } },
+                    { $count: "uniqueDates" },
+                ]);
+                // result[0]?.uniqueDates or 0
+                return {
+                    ...cls,
+                    attendanceCount: result[0]?.uniqueDates || 0,
+                };
+            })
+        );
+        teacherObj.classIds = classIdsWithAttendance;
+    }
+
     console.log(`Get teacher by userId ${userId} requested`);
-    res.json({ teacher: teacher.toObject({ getters: true }) });
-}
+    res.json({ teacher: teacherObj });
+};
 
 const updateTeacher = async (req, res, next) => {
-    const { name, phone, position, dateOfBirth, gender, address, teacherId, userId, thumbnail } = req.body;
+    const {
+        name,
+        phone,
+        position,
+        dateOfBirth,
+        gender,
+        address,
+        teacherId,
+        userId,
+        thumbnail,
+    } = req.body;
 
     let teacher;
     try {
-        const updateData = { name, phone, position, dateOfBirth, gender, address, isProfileComplete: true };
+        const updateData = {
+            name,
+            phone,
+            position,
+            dateOfBirth,
+            gender,
+            address,
+            isProfileComplete: true,
+        };
         if (req.file) {
-            updateData.image = req.file.path.replace(/\\/g, '/');
+            updateData.image = req.file.path.replace(/\\/g, "/");
             updateData.originalImagePath = req.file.path;
         }
         if (thumbnail) {
@@ -159,48 +241,54 @@ const updateTeacher = async (req, res, next) => {
         }
 
         if (teacherId) {
-            teacher = await Teacher.findByIdAndUpdate(
-                teacherId,
-                updateData,
-                { new: true, runValidators: true }
-            );
+            teacher = await Teacher.findByIdAndUpdate(teacherId, updateData, {
+                new: true,
+                runValidators: true,
+            });
         } else {
-            teacher = await Teacher.findOneAndUpdate(
-                { userId },
-                updateData,
-                { new: true, runValidators: true }
-            );
+            teacher = await Teacher.findOneAndUpdate({ userId }, updateData, {
+                new: true,
+                runValidators: true,
+            });
         }
 
         if (teacher) {
             const userUpdate = { name: teacher.name };
             if (req?.file?.path) userUpdate.image = req.file.path;
             if (thumbnail) userUpdate.thumbnail = thumbnail;
-            await User.findByIdAndUpdate(
-                teacher.userId,
-                userUpdate,
-                { new: true, runValidators: true }
-            );
+            await User.findByIdAndUpdate(teacher.userId, userUpdate, {
+                new: true,
+                runValidators: true,
+            });
         }
-
     } catch (err) {
         console.error(err);
-        const error = new HttpError('Something went wrong while updating the teacher.', 500);
+        const error = new HttpError(
+            "Something went wrong while updating the teacher.",
+            500
+        );
         return next(error);
     }
 
     if (!teacher) {
-        return next(new HttpError(`Could not find a teacher with ID '${teacherId}'`, 404));
+        return next(
+            new HttpError(
+                `Could not find a teacher with ID '${teacherId}'`,
+                404
+            )
+        );
     }
 
     console.log(`teacher with nis '${teacher.nig}' updated!`);
-    res.status(200).json({ message: 'Berhasil melengkapi profile!', teacher: teacher.toObject({ getters: true }) });
-}
+    res.status(200).json({
+        message: "Berhasil melengkapi profile!",
+        teacher: teacher.toObject({ getters: true }),
+    });
+};
 
-
-exports.getTeachersByBranchId = getTeachersByBranchId
-exports.getTeachersBySubBranchId = getTeachersBySubBranchId
-exports.getTeacherByUserId = getTeacherByUserId
-exports.getTeacherById = getTeacherById
-exports.getTeachers = getTeachers
-exports.updateTeacher = updateTeacher
+exports.getTeachersByBranchId = getTeachersByBranchId;
+exports.getTeachersBySubBranchId = getTeachersBySubBranchId;
+exports.getTeacherByUserId = getTeacherByUserId;
+exports.getTeacherById = getTeacherById;
+exports.getTeachers = getTeachers;
+exports.updateTeacher = updateTeacher;
