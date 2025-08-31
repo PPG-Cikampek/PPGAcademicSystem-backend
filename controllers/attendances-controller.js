@@ -922,7 +922,9 @@ const findStudentClass = async (academicYearId, studentId) => {
             for (const cls of tg.classes) {
                 if (
                     cls.students &&
-                    cls.students.map((s) => s.toString()).includes(studentId.toString())
+                    cls.students
+                        .map((s) => s.toString())
+                        .includes(studentId.toString())
                 ) {
                     foundClass = cls;
                     break;
@@ -933,7 +935,11 @@ const findStudentClass = async (academicYearId, studentId) => {
         if (foundClass) break;
     }
 
-    if (!foundClass) throw new HttpError("Student not found in the provided academic year!", 404);
+    if (!foundClass)
+        throw new HttpError(
+            "Student not found in the provided academic year!",
+            404
+        );
 
     return { academicYear, foundClass };
 };
@@ -988,7 +994,11 @@ const computeStudentAttendanceData = (attendances) => {
         }
 
         if (att.teachersNotes && String(att.teachersNotes).trim().length > 0) {
-            const noteDate = att.forDate ? new Date(att.forDate) : att.timestamp ? new Date(att.timestamp) : null;
+            const noteDate = att.forDate
+                ? new Date(att.forDate)
+                : att.timestamp
+                ? new Date(att.timestamp)
+                : null;
             const formattedDate = noteDate
                 ? new Intl.DateTimeFormat("id-ID", {
                       day: "numeric",
@@ -1020,14 +1030,22 @@ const computeStudentAttendanceData = (attendances) => {
         let sumFloor = items.reduce((s, it) => s + it.floorPct, 0);
         let remainder = 100 - sumFloor;
 
-        items.sort((a, b) => b.frac - a.frac || b.count - a.count || a.status.localeCompare(b.status));
+        items.sort(
+            (a, b) =>
+                b.frac - a.frac ||
+                b.count - a.count ||
+                a.status.localeCompare(b.status)
+        );
         for (let i = 0; i < items.length && remainder > 0; i++) {
             items[i].floorPct += 1;
             remainder -= 1;
         }
 
         if (remainder !== 0) {
-            const maxIdx = items.reduce((maxI, it, idx) => it.count > items[maxI].count ? idx : maxI, 0);
+            const maxIdx = items.reduce(
+                (maxI, it, idx) => (it.count > items[maxI].count ? idx : maxI),
+                0
+            );
             items[maxIdx].floorPct += remainder;
         }
 
@@ -1049,7 +1067,14 @@ const computeStudentAttendanceData = (attendances) => {
 };
 
 // Helper function to build student and class data
-const buildStudentAndClassData = async (attendances, studentId, foundClass, academicYear, start, end) => {
+const buildStudentAndClassData = async (
+    attendances,
+    studentId,
+    foundClass,
+    academicYear,
+    start,
+    end
+) => {
     let studentDoc = null;
     if (attendances[0] && attendances[0].studentId) {
         studentDoc = attendances[0].studentId;
@@ -1060,8 +1085,12 @@ const buildStudentAndClassData = async (attendances, studentId, foundClass, acad
     let branchName = "";
     let subBranchName = "";
     if (attendances[0]) {
-        branchName = attendances[0].branchId ? attendances[0].branchId.name || "" : "";
-        subBranchName = attendances[0].subBranchId ? attendances[0].subBranchId.name || "" : "";
+        branchName = attendances[0].branchId
+            ? attendances[0].branchId.name || ""
+            : "";
+        subBranchName = attendances[0].subBranchId
+            ? attendances[0].subBranchId.name || ""
+            : "";
     }
 
     if (!branchName || !subBranchName) {
@@ -1078,9 +1107,13 @@ const buildStudentAndClassData = async (attendances, studentId, foundClass, acad
             })
             .populate({ path: "teachers", select: ["_id", "name", "nig"] });
         if (!branchName && classFull?.teachingGroupId?.branchYearId?.branchId) {
-            branchName = classFull.teachingGroupId.branchYearId.branchId.name || "";
+            branchName =
+                classFull.teachingGroupId.branchYearId.branchId.name || "";
         }
-        if (!subBranchName && classFull?.teachingGroupId?.subBranches?.length > 0) {
+        if (
+            !subBranchName &&
+            classFull?.teachingGroupId?.subBranches?.length > 0
+        ) {
             subBranchName = classFull.teachingGroupId.subBranches[0].name || "";
         }
         if (!foundClass.teachers && classFull?.teachers) {
@@ -1143,18 +1176,36 @@ const getAttendanceReports = async (req, res, next) => {
 
     try {
         // Find student's class
-        const { academicYear, foundClass } = await findStudentClass(academicYearId, studentId);
+        const { academicYear, foundClass } = await findStudentClass(
+            academicYearId,
+            studentId
+        );
 
         // Fetch attendances
-        const attendances = await fetchStudentAttendances(studentId, foundClass._id, start, end);
+        const attendances = await fetchStudentAttendances(
+            studentId,
+            foundClass._id,
+            start,
+            end
+        );
 
         // Compute aggregates
-        const { attendanceData, violationData, teachersNotes } = computeStudentAttendanceData(attendances);
+        const { attendanceData, violationData, teachersNotes } =
+            computeStudentAttendanceData(attendances);
 
         // Build student and class data
-        const { studentData, classData } = await buildStudentAndClassData(attendances, studentId, foundClass, academicYear, start, end);
+        const { studentData, classData } = await buildStudentAndClassData(
+            attendances,
+            studentId,
+            foundClass,
+            academicYear,
+            start,
+            end
+        );
 
-        console.log(`Retrieved student attendance report based on filters (${studentId})`);
+        console.log(
+            `Retrieved student attendance report based on filters (${studentId})`
+        );
         return res.status(200).json({
             attendanceData,
             violationData,
