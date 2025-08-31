@@ -357,6 +357,7 @@ const getAttendanceOverview = async (req, res, next) => {
     // Extract filter parameters from request body
     const {
         academicYearId,
+        branchYearId,
         branchId,
         subBranchId,
         teachingGroupId,
@@ -396,6 +397,7 @@ const getAttendanceOverview = async (req, res, next) => {
         // Build base attendance filter from provided parameters
         const attendanceFilter = {};
         if (branchId) attendanceFilter.branchId = branchId;
+        if (branchYearId) attendanceFilter.branchYearId = branchYearId; // new: allow filtering by branchYear
         if (subBranchId) attendanceFilter.subBranchId = subBranchId;
         if (teachingGroupId) attendanceFilter.teachingGroupId = teachingGroupId;
 
@@ -431,9 +433,61 @@ const getAttendanceOverview = async (req, res, next) => {
             // );
         }
 
-        // Simplified academic year validation: Load academic year and flatten class IDs
+        // Simplified academic year / branch-year validation: derive class IDs from
+        // branchYearId (preferred) or academicYearId (fallback) and restrict/filter classId accordingly.
         let classIds = null;
-        if (academicYearId) {
+
+        if (branchYearId) {
+            // If branchYearId is provided, it takes precedence over academicYearId.
+            const branchYear = await BranchYear.findById(branchYearId)
+                .populate({
+                    path: "teachingGroups",
+                    select: "classes",
+                    populate: { path: "classes", select: "name" },
+                })
+                .lean();
+
+            if (!branchYear) {
+                console.log(
+                    "[getAttendanceOverview] No branchYear found for:",
+                    branchYearId
+                );
+                return res.status(200).json(emptyResponse);
+            }
+
+            classIds = [];
+            for (const teachingGroup of branchYear.teachingGroups || []) {
+                for (const cls of teachingGroup.classes || []) {
+                    classIds.push(toId(cls));
+                }
+            }
+
+            if (classIds.length === 0) {
+                console.log(
+                    "[getAttendanceOverview] No classIds found in branchYear"
+                );
+                return res.status(200).json(emptyResponse);
+            }
+
+            // Enforce requested classId(s) to be within the branchYear classes
+            if (attendanceFilter.classId) {
+                const requestedIds = attendanceFilter.classId.$in
+                    ? attendanceFilter.classId.$in.map(toId)
+                    : [toId(attendanceFilter.classId)];
+
+                if (!requestedIds.every((id) => classIds.includes(id))) {
+                    console.log(
+                        "[getAttendanceOverview] Requested classIds not in branchYear classIds"
+                    );
+                    return res.status(200).json(emptyResponse);
+                }
+            } else {
+                attendanceFilter.classId = { $in: classIds };
+                console.log(
+                    "[getAttendanceOverview] attendanceFilter.classId set to branchYear classIds"
+                );
+            }
+        } else if (academicYearId) {
             const academicYear = await AcademicYear.findById(academicYearId)
                 .populate({
                     path: "branchYears",
@@ -444,16 +498,8 @@ const getAttendanceOverview = async (req, res, next) => {
                     },
                 })
                 .lean();
-            // console.log(
-            //     "[getAttendanceOverview] Loaded academicYear:",
-            //     academicYear
-            // );
 
             if (!academicYear) {
-                // console.log(
-                //     "[getAttendanceOverview] No academicYear found for:",
-                //     academicYearId
-                // );
                 return res.status(200).json(emptyResponse);
             }
 
@@ -466,10 +512,6 @@ const getAttendanceOverview = async (req, res, next) => {
                     }
                 }
             }
-            // console.log(
-            //     "[getAttendanceOverview] Flattened classIds:",
-            //     classIds
-            // );
 
             if (classIds.length === 0) {
                 console.log(
@@ -483,10 +525,6 @@ const getAttendanceOverview = async (req, res, next) => {
                 const requestedIds = attendanceFilter.classId.$in
                     ? attendanceFilter.classId.$in.map(toId)
                     : [toId(attendanceFilter.classId)];
-                // console.log(
-                //     "[getAttendanceOverview] Requested classIds:",
-                //     requestedIds
-                // );
 
                 if (!requestedIds.every((id) => classIds.includes(id))) {
                     console.log(
