@@ -398,7 +398,7 @@ const getAttendanceOverview = async (req, res, next) => {
         const attendanceFilter = {};
         if (branchId) attendanceFilter.branchId = branchId;
         if (branchYearId) attendanceFilter.branchYearId = branchYearId; // new: allow filtering by branchYear
-        if (subBranchId) attendanceFilter.subBranchId = subBranchId;
+        // if (subBranchId) attendanceFilter.subBranchId = subBranchId;
         if (teachingGroupId) attendanceFilter.teachingGroupId = teachingGroupId;
 
         if (teacherClassIdsArr)
@@ -887,89 +887,82 @@ const getAttendanceOverview = async (req, res, next) => {
 
         // Build studentsDataByClass for subBranchAdmin ND branchAdmin role only
         let studentsDataByClass = [];
-        if (
-            req.userData.userRole === "subBranchAdmin" ||
-            req.userData.userRole === "branchAdmin"
-        ) {
-            const classIdsToGroup =
-                rosterClassIds?.length > 0
-                    ? rosterClassIds
-                    : [
-                          ...new Set(
-                              attendances
-                                  .map((a) => toId(a.classId))
-                                  .filter(Boolean)
-                          ),
-                      ];
+
+        const classIdsToGroup =
+            rosterClassIds?.length > 0
+                ? rosterClassIds
+                : [
+                      ...new Set(
+                          attendances
+                              .map((a) => toId(a.classId))
+                              .filter(Boolean)
+                      ),
+                  ];
+        // console.log(
+        //     "[getAttendanceOverview] classIdsToGroup for subBranchAdmin:",
+        //     classIdsToGroup
+        // );
+
+        if (classIdsToGroup.length > 0) {
+            const classesForGroup = await Class.find({
+                _id: { $in: classIdsToGroup },
+            })
+                .select("_id name students")
+                .lean();
+            const classStudentMap = {};
+            classesForGroup.forEach((c) => {
+                classStudentMap[toId(c)] = new Set(
+                    (c.students || []).map(toId)
+                );
+            });
             // console.log(
-            //     "[getAttendanceOverview] classIdsToGroup for subBranchAdmin:",
-            //     classIdsToGroup
+            //     "[getAttendanceOverview] classesForGroup:",
+            //     classesForGroup
             // );
 
-            if (classIdsToGroup.length > 0) {
-                const classesForGroup = await Class.find({
-                    _id: { $in: classIdsToGroup },
-                })
-                    .select("_id name students")
-                    .lean();
-                const classStudentMap = {};
-                classesForGroup.forEach((c) => {
-                    classStudentMap[toId(c)] = new Set(
-                        (c.students || []).map(toId)
+            studentsDataByClass = classesForGroup
+                .map((c) => {
+                    const cId = toId(c);
+                    const studentsInClass = studentsData.filter((sd) =>
+                        classStudentMap[cId]?.has(sd.id)
                     );
-                });
-                // console.log(
-                //     "[getAttendanceOverview] classesForGroup:",
-                //     classesForGroup
-                // );
+                    const attendancesForClass = attendances.filter(
+                        (a) => toId(a.classId) === cId
+                    );
 
-                studentsDataByClass = classesForGroup
-                    .map((c) => {
-                        const cId = toId(c);
-                        const studentsInClass = studentsData.filter((sd) =>
-                            classStudentMap[cId]?.has(sd.id)
-                        );
-                        const attendancesForClass = attendances.filter(
-                            (a) => toId(a.classId) === cId
-                        );
+                    const overallArr = getOverallStats(attendancesForClass);
+                    const attendancesObj = overallArr.reduce((o, it) => {
+                        o[it.status] = it.percentage;
+                        return o;
+                    }, {});
 
-                        const overallArr = getOverallStats(attendancesForClass);
-                        const attendancesObj = overallArr.reduce((o, it) => {
-                            o[it.status] = it.percentage;
-                            return o;
-                        }, {});
+                    // Calculate unique attendance dates for the class
+                    const uniqueDates = new Set(
+                        attendancesForClass.map(
+                            (a) =>
+                                a.forDate &&
+                                new Date(a.forDate).toISOString().slice(0, 10)
+                        )
+                    );
 
-                        // Calculate unique attendance dates for the class
-                        const uniqueDates = new Set(
-                            attendancesForClass.map(
-                                (a) =>
-                                    a.forDate &&
-                                    new Date(a.forDate)
-                                        .toISOString()
-                                        .slice(0, 10)
-                            )
-                        );
-
-                        return {
-                            classId: cId,
-                            clsName: c.name || "",
-                            subBranchId:
-                                attendancesForClass[0]?.subBranchId._id || "",
-                            subBranchName:
-                                attendancesForClass[0]?.subBranchId?.name || "",
-                            studentsCount: studentsInClass.length,
-                            attendances: attendancesObj,
-                            violationStats:
-                                getViolationStats(attendancesForClass),
-                            attendancesCount: uniqueDates.size,
-                        };
-                    })
-                    .filter((g) => g.studentsCount > 0);
-                // console.log(
-                //     "[getAttendanceOverview] studentsDataByClass:",
-                //     studentsDataByClass
-                // );
-            }
+                    return {
+                        classId: cId,
+                        clsName: c.name || "",
+                        subBranchId:
+                            attendancesForClass[0]?.subBranchId._id || "",
+                        subBranchName:
+                            attendancesForClass[0]?.subBranchId?.name || "",
+                        studentsCount: studentsInClass.length,
+                        attendances: attendancesObj,
+                        violationStats: getViolationStats(attendancesForClass),
+                        attendancesCount: uniqueDates.size,
+                    };
+                })
+                .filter((g) => g.studentsCount > 0);
+            // console.log(
+            //     "[getAttendanceOverview] studentsDataByClass:",
+            //     studentsDataByClass
+            // );
         }
 
         // Build additional grouped data for branchAdmin: by teaching group and by sub-branch
