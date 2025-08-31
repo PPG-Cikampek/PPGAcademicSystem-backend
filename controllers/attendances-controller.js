@@ -435,7 +435,15 @@ const updateAttendancesByIds = async (req, res, next) => {
 //         return next(new HttpError('Internal server error occurred!', 500));
 //     }
 // };
+
+/**
+ * Retrieves an overview of attendance data based on various filters.
+ * This endpoint aggregates attendance records, calculates statistics, and provides student-wise and class-wise summaries.
+ * Supports filtering by academic year, branch, sub-branch, teaching group, class, teacher classes, and date range.
+ * Returns overall stats, violation stats, student data with attendance percentages, and optionally class-grouped data for sub-branch admins.
+ */
 const getAttendanceOverview = async (req, res, next) => {
+    // Extract filter parameters from request body
     const {
         academicYearId,
         branchId,
@@ -447,6 +455,7 @@ const getAttendanceOverview = async (req, res, next) => {
         endDate,
     } = req.body;
 
+    // Define empty response structure for cases with no data
     const emptyResponse = {
         studentsData: [],
         overallStats: [],
@@ -455,10 +464,10 @@ const getAttendanceOverview = async (req, res, next) => {
     console.log("[getAttendanceOverview] Request body:", req.body);
 
     try {
-        // ID normalization helper
+        // Helper function to normalize IDs to strings
         const toId = (obj) => obj?._id?.toString() || obj?.toString() || obj;
 
-        // Normalize inputs
+        // Normalize teacher class IDs and single class ID
         const teacherClassIdsArr =
             teacherClassIds &&
             Array.isArray(teacherClassIds) &&
@@ -473,7 +482,7 @@ const getAttendanceOverview = async (req, res, next) => {
             classIdStr
         );
 
-        // Build base attendance filter
+        // Build base attendance filter from provided parameters
         const attendanceFilter = {};
         if (branchId) attendanceFilter.branchId = branchId;
         if (subBranchId) attendanceFilter.subBranchId = subBranchId;
@@ -487,7 +496,7 @@ const getAttendanceOverview = async (req, res, next) => {
             attendanceFilter
         );
 
-        // Apply date range filter
+        // Apply date range filter if startDate and endDate are provided
         if (startDate && endDate) {
             const s = new Date(startDate);
             const e = new Date(endDate);
@@ -511,7 +520,7 @@ const getAttendanceOverview = async (req, res, next) => {
             );
         }
 
-        // Simplified academic year validation
+        // Simplified academic year validation: Load academic year and flatten class IDs
         let classIds = null;
         if (academicYearId) {
             const academicYear = await AcademicYear.findById(academicYearId)
@@ -537,7 +546,7 @@ const getAttendanceOverview = async (req, res, next) => {
                 return res.status(200).json(emptyResponse);
             }
 
-            // Flatten class IDs
+            // Flatten class IDs from the academic year's structure
             classIds = [];
             for (const branchYear of academicYear.branchYears || []) {
                 for (const teachingGroup of branchYear.teachingGroups || []) {
@@ -582,12 +591,12 @@ const getAttendanceOverview = async (req, res, next) => {
             }
         }
 
-        // Determine final class IDs for roster collection
+        // Determine final class IDs for roster collection based on inputs
         const rosterClassIds =
             teacherClassIdsArr || (classIdStr ? [classIdStr] : classIds);
         console.log("[getAttendanceOverview] rosterClassIds:", rosterClassIds);
 
-        // Pre-collect student IDs from classes and apply subBranch filtering
+        // Pre-collect student IDs from classes and apply subBranch filtering if specified
         let finalStudentIds = [];
         if (rosterClassIds && rosterClassIds.length > 0) {
             const classes = await Class.find({ _id: { $in: rosterClassIds } })
@@ -653,7 +662,7 @@ const getAttendanceOverview = async (req, res, next) => {
             }
         }
 
-        // Single attendance query with complete filter
+        // Single attendance query with complete filter, including student IDs
         const completeFilter = { ...attendanceFilter };
         if (finalStudentIds.length > 0) {
             completeFilter.studentId = { $in: finalStudentIds };
@@ -695,6 +704,7 @@ const getAttendanceOverview = async (req, res, next) => {
         );
 
         // Helper functions for statistics
+        // Calculate overall attendance statistics with percentages summing to 100
         const getOverallStats = (atts) => {
             const statusCounts = atts.reduce((acc, a) => {
                 const s = a.status || "Tanpa Keterangan";
@@ -755,6 +765,7 @@ const getAttendanceOverview = async (req, res, next) => {
             return statsArr;
         };
 
+        // Calculate violation statistics from attendance records
         const getViolationStats = (atts) => {
             const violationCounts = {};
             atts.forEach((a) => {
@@ -790,7 +801,7 @@ const getAttendanceOverview = async (req, res, next) => {
             studentMap[toId(s)] = s;
         });
 
-        // Status normalization
+        // Status normalization maps for consistent status handling
         const statusMap = {
             present: "Hadir",
             hadir: "Hadir",
@@ -811,7 +822,7 @@ const getAttendanceOverview = async (req, res, next) => {
             "Tanpa Keterangan",
         ];
 
-        // Initialize student aggregation
+        // Initialize student aggregation structure
         const studentAgg = {};
         finalStudentIds.forEach((id) => {
             const sd = studentMap[id] || {};
@@ -836,7 +847,7 @@ const getAttendanceOverview = async (req, res, next) => {
             studentAgg
         );
 
-        // Aggregate attendance data
+        // Aggregate attendance data into studentAgg
         attendances.forEach((att) => {
             if (!att.studentId) return;
             const sid = toId(att.studentId);
@@ -886,7 +897,7 @@ const getAttendanceOverview = async (req, res, next) => {
             studentAgg
         );
 
-        // Simplified percentage calculation
+        // Calculate percentages for each student's attendance statuses
         Object.values(studentAgg).forEach((student) => {
             const counts = student.attendances;
             const keys = Object.keys(counts);
@@ -919,12 +930,13 @@ const getAttendanceOverview = async (req, res, next) => {
             studentAgg
         );
 
+        // Sort studentsData alphabetically by name
         const studentsData = Object.values(studentAgg).sort((a, b) =>
             (a.name || "").localeCompare(b.name || "")
         );
         console.log("[getAttendanceOverview] studentsData:", studentsData);
 
-        // Build studentsDataByClass for subBranchAdmin only
+        // Build studentsDataByClass for subBranchAdmin role only
         let studentsDataByClass = [];
         if (req.userData.userRole === "subBranchAdmin") {
             const classIdsToGroup =
@@ -975,7 +987,7 @@ const getAttendanceOverview = async (req, res, next) => {
                             return o;
                         }, {});
 
-                        // Calculate unique attendance dates
+                        // Calculate unique attendance dates for the class
                         const uniqueDates = new Set(
                             attendancesForClass.map(
                                 (a) =>
@@ -1008,6 +1020,7 @@ const getAttendanceOverview = async (req, res, next) => {
             `[getAttendanceOverview] Retrieved ${attendances.length} attendance records`
         );
 
+        // Return the aggregated data
         return res.status(200).json({
             studentsData,
             studentsDataByClass,
