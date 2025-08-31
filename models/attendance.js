@@ -1,17 +1,33 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
 const Schema = mongoose.Schema;
 
 const attendanceSchema = new Schema({
-    studentId: { type: mongoose.Types.ObjectId, required: true, ref: 'Student' },
+    studentId: {
+        type: mongoose.Types.ObjectId,
+        required: true,
+        ref: "Student",
+    },
     forDate: { type: Date, required: true },
     timestamp: { type: Date, required: true },
-    branchYearId: { type: mongoose.Types.ObjectId, required: true, ref: 'BranchYear' },
-    branchId: { type: mongoose.Types.ObjectId, required: true, ref: 'Branch' },
-    subBranchId: { type: mongoose.Types.ObjectId, required: true, ref: 'SubBranch' },
-    teachingGroupId: { type: mongoose.Types.ObjectId, required: true, ref: 'TeachingGroup' },
-    classId: { type: mongoose.Types.ObjectId, required: true, ref: 'Class' },
-    status: { type: String, required: true }, // Enum = Hadir, Izin, Sakit, Tanpa Keterangan
+    branchYearId: {
+        type: mongoose.Types.ObjectId,
+        required: true,
+        ref: "BranchYear",
+    },
+    branchId: { type: mongoose.Types.ObjectId, required: true, ref: "Branch" },
+    subBranchId: {
+        type: mongoose.Types.ObjectId,
+        required: true,
+        ref: "SubBranch",
+    },
+    teachingGroupId: {
+        type: mongoose.Types.ObjectId,
+        required: true,
+        ref: "TeachingGroup",
+    },
+    classId: { type: mongoose.Types.ObjectId, required: true, ref: "Class" },
+    status: { type: String, required: true }, // Enum = Hadir, Terlambat, Izin, Sakit, Tanpa Keterangan
     violations: { type: Object, required: true }, // Object = {{attribute: boolean}, {attitude: boolean}, {tidiness: boolean}}
     updateReason: { type: String, required: false },
     teachersNotes: { type: String, required: false },
@@ -26,5 +42,4 @@ attendanceSchema.index({ teachingGroupId: 1 }); // Frequent query by teachingGro
 attendanceSchema.index({ subBranchId: 1 }); // Frequent query by subBranchId
 attendanceSchema.index({ classId: 1 }); // Frequent query by classId
 
-module.exports = mongoose.model('Attendance', attendanceSchema);
-
+module.exports = mongoose.model("Attendance", attendanceSchema);

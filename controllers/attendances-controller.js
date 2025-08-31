@@ -3,13 +3,15 @@ const mongoose = require("mongoose");
 
 const User = require("../models/user");
 const Branch = require("../models/branch");
-const BranchYear = require("../models/branchYear");
 const TeachingGroup = require("../models/teachingGroup");
 const AcademicYear = require("../models/academicYear");
 const Class = require("../models/class");
+const TeachingGroupYear = require("../models/teachingGroupYear");
 const Student = require("../models/student");
 const Teacher = require("../models/teacher");
 const Attendance = require("../models/attendance");
+const attendance = require("../models/attendance");
+const teachingGroupYear = require("../models/teachingGroupYear");
 
 const getAttendanceById = async (req, res, next) => {
     const attendanceId = req.params.attendanceId;
@@ -81,7 +83,7 @@ const getAttendancesByAcademicYearId = async (req, res, next) => {
 
 const createNewAttendanceForClass = async (req, res, next) => {
     console.log("createNewAttendanceForClass requested");
-    const { classId, branchId, branchYearId, subBranchId } = req.body;
+    const { classId } = req.body;
 
     let identifiedClass;
     try {
@@ -118,10 +120,6 @@ const createNewAttendanceForClass = async (req, res, next) => {
                 },
                 teachersNotes: "",
                 studentId,
-                branchId,
-                branchYearId,
-                subBranchId,
-                teachingGroupId: identifiedClass.teachingGroupId,
                 classId,
             });
 
@@ -129,20 +127,20 @@ const createNewAttendanceForClass = async (req, res, next) => {
             attendances.push(createdAttendance);
 
             // Step 2: Update the respective student document with the created attendance ID
-            // await Student.findByIdAndUpdate(
-            //     studentId,
-            //     { $push: { attendanceIds: createdAttendance._id } },
-            //     { session }
-            // );
+            await Student.findByIdAndUpdate(
+                studentId,
+                { $push: { attendanceIds: createdAttendance._id } },
+                { session }
+            );
         }
 
         // Step 3: Update class schema with all attendance references
-        // const attendanceIds = attendances.map(attendance => attendance._id);
-        // await Class.findByIdAndUpdate(
-        //     classId,
-        //     { $push: { attendances: { $each: attendanceIds } } },
-        //     { session }
-        // );
+        const attendanceIds = attendances.map((attendance) => attendance._id);
+        await Class.findByIdAndUpdate(
+            classId,
+            { $push: { attendances: { $each: attendanceIds } } },
+            { session }
+        );
 
         // Commit the transaction
         await session.commitTransaction();
@@ -347,7 +345,7 @@ const updateAttendancesByIds = async (req, res, next) => {
     }
 };
 
-// const getAttendanceOverview = async (req, res, next) => {
+// const getAttendanceReports = async (req, res, next) => {
 //     const { academicYearId, branchId, teachingGroupId, classId, month } = req.body;
 
 //     const filter = {};
@@ -435,791 +433,176 @@ const updateAttendancesByIds = async (req, res, next) => {
 //         return next(new HttpError('Internal server error occurred!', 500));
 //     }
 // };
-
-/**
- * Retrieves an overview of attendance data based on various filters.
- * This endpoint aggregates attendance records, calculates statistics, and provides student-wise and class-wise summaries.
- * Supports filtering by academic year, branch, sub-branch, teaching group, class, teacher classes, and date range.
- * Returns overall stats, violation stats, student data with attendance percentages, and optionally class-grouped data for sub-branch admins.
- */
-const getAttendanceOverview = async (req, res, next) => {
-    // Extract filter parameters from request body
+const getAttendanceReports = async (req, res, next) => {
     const {
         academicYearId,
         branchId,
-        subBranchId,
         teachingGroupId,
         classId,
-        teacherClassIds,
         startDate,
         endDate,
     } = req.body;
 
-    // Define empty response structure for cases with no data
-    const emptyResponse = {
-        studentsData: [],
-        overallStats: [],
-        violationStats: [],
-    };
+    const filter = {};
 
+    if (academicYearId) {
+        filter.academicYearId = academicYearId;
+    }
+
+    let teachingGroupYears;
     try {
-        // Build and validate filters
-        const filters = buildFilters(req.body);
-        if (!filters) return res.status(200).json(emptyResponse);
-
-        // Load academic year data if provided
-        const classIds = academicYearId
-            ? await loadAcademicYearData(academicYearId)
-            : null;
-        if (academicYearId && !classIds)
-            return res.status(200).json(emptyResponse);
-
-        // Collect student IDs
-        const studentIds = await collectStudentIds(
-            filters.rosterClassIds,
-            subBranchId
-        );
-        if (!studentIds || studentIds.length === 0)
-            return res.status(200).json(emptyResponse);
-
-        // Fetch attendances
-        const attendances = await fetchAttendances({
-            ...filters.attendanceFilter,
-            studentId: { $in: studentIds },
-        });
-
-        // Aggregate student data
-        const studentsData = aggregateStudentData(attendances, studentIds);
-
-        // Compute stats
-        const overallStats = computeOverallStats(attendances);
-        const violationStats = computeViolationStats(attendances);
-
-        // Build class-grouped data for subBranchAdmin
-        const studentsDataByClass =
-            req.userData.userRole === "subBranchAdmin"
-                ? buildClassGroupedData(
-                      attendances,
-                      studentsData,
-                      filters.rosterClassIds
-                  )
-                : [];
-
-        // Return the aggregated data
-        return res.status(200).json({
-            studentsData,
-            studentsDataByClass,
-            overallStats,
-            violationStats,
-        });
-    } catch (error) {
-        console.error("[getAttendanceOverview] Error:", error);
-        return next(new HttpError("Internal server error occurred!", 500));
-    }
-};
-
-// Helper function to build and validate filters
-const buildFilters = (reqBody) => {
-    const {
-        branchId,
-        subBranchId,
-        teachingGroupId,
-        classId,
-        teacherClassIds,
-        startDate,
-        endDate,
-    } = reqBody;
-
-    // Helper to normalize IDs
-    const toId = (obj) => obj?._id?.toString() || obj?.toString() || obj;
-
-    // Normalize teacher class IDs and single class ID
-    const teacherClassIdsArr =
-        teacherClassIds &&
-        Array.isArray(teacherClassIds) &&
-        teacherClassIds.length > 0
-            ? teacherClassIds.map((id) => toId(id))
-            : null;
-    const classIdStr = classId ? toId(classId) : null;
-
-    // Build base attendance filter
-    const attendanceFilter = {};
-    if (branchId) attendanceFilter.branchId = branchId;
-    if (subBranchId) attendanceFilter.subBranchId = subBranchId;
-    if (teachingGroupId) attendanceFilter.teachingGroupId = teachingGroupId;
-    if (teacherClassIdsArr)
-        attendanceFilter.classId = { $in: teacherClassIdsArr };
-    else if (classIdStr) attendanceFilter.classId = classIdStr;
-
-    // Apply date range if provided
-    if (startDate && endDate) {
-        const s = new Date(startDate);
-        const e = new Date(endDate);
-        if (isNaN(s.getTime()) || isNaN(e.getTime())) {
-            throw new HttpError(
-                "Invalid date format for startDate or endDate!",
-                400
-            );
-        }
-        attendanceFilter.forDate = { $gte: s, $lte: e };
-    }
-
-    // Determine roster class IDs
-    const rosterClassIds =
-        teacherClassIdsArr || (classIdStr ? [classIdStr] : null);
-
-    return { attendanceFilter, rosterClassIds };
-};
-
-// Helper function to load academic year data
-const loadAcademicYearData = async (academicYearId) => {
-    const academicYear = await AcademicYear.findById(academicYearId)
-        .populate({
-            path: "branchYears",
-            populate: {
-                path: "teachingGroups",
-                select: "classes",
-                populate: { path: "classes", select: "name" },
-            },
-        })
-        .lean();
-
-    if (!academicYear) return null;
-
-    // Flatten class IDs
-    const classIds = [];
-    for (const branchYear of academicYear.branchYears || []) {
-        for (const teachingGroup of branchYear.teachingGroups || []) {
-            for (const cls of teachingGroup.classes || []) {
-                classIds.push(cls._id.toString());
-            }
-        }
-    }
-    return classIds.length > 0 ? classIds : null;
-};
-
-// Helper function to collect student IDs
-const collectStudentIds = async (rosterClassIds, subBranchId) => {
-    if (!rosterClassIds || rosterClassIds.length === 0) return [];
-
-    const classes = await Class.find({ _id: { $in: rosterClassIds } })
-        .select("students")
-        .lean();
-    const rosterStudentIds = [
-        ...new Set(
-            classes.flatMap((c) => (c.students || []).map((s) => s.toString()))
-        ),
-    ];
-
-    if (subBranchId) {
-        const usersInSub = await User.find({ subBranchId })
-            .select("_id")
-            .lean();
-        const userIds = usersInSub.map((u) => u._id.toString());
-        if (userIds.length === 0) return [];
-
-        const filteredStudents = await Student.find({
-            userId: { $in: userIds },
-            _id: { $in: rosterStudentIds },
-        })
-            .select("_id")
-            .lean();
-        return filteredStudents.map((s) => s._id.toString());
-    }
-
-    return rosterStudentIds;
-};
-
-// Helper function to fetch attendances
-const fetchAttendances = async (filter) => {
-    return await Attendance.find(filter)
-        .populate({
-            path: "studentId",
-            select: ["name", "nis", "image", "thumbnail"],
-        })
-        .populate({
-            path: "classId",
-            select: "name teachers",
-            populate: { path: "teachers", select: ["name", "nig"] },
-        })
-        .populate({
-            path: "teachingGroupId",
-            select: "name branchYearId subBranches",
-            populate: [
-                {
-                    path: "branchYearId",
-                    select: "branchId",
-                    populate: { path: "branchId", select: "name" },
-                },
-                { path: "subBranches", select: "name" },
-            ],
-        })
-        .populate({ path: "branchId", select: "name" })
-        .populate({ path: "subBranchId", select: "name" })
-        .sort({ forDate: 1, "studentId.name": 1 })
-        .lean();
-};
-
-// Helper function to aggregate student data
-const aggregateStudentData = async (attendances, studentIds) => {
-    const students =
-        studentIds.length > 0
-            ? await Student.find({ _id: { $in: studentIds } })
-                  .select("name nis thumbnail")
-                  .lean()
-            : [];
-    const studentMap = {};
-    students.forEach((s) => {
-        studentMap[s._id.toString()] = s;
-    });
-
-    const statusMap = {
-        present: "Hadir",
-        hadir: "Hadir",
-        late: "Terlambat",
-        terlambat: "Terlambat",
-        permission: "Izin",
-        izin: "Izin",
-        sick: "Sakit",
-        sakit: "Sakit",
-        "tanpa keterangan": "Tanpa Keterangan",
-        "": "Tanpa Keterangan",
-    };
-    const commonStatuses = [
-        "Hadir",
-        "Terlambat",
-        "Izin",
-        "Sakit",
-        "Tanpa Keterangan",
-    ];
-
-    const studentAgg = {};
-    studentIds.forEach((id) => {
-        const sd = studentMap[id] || {};
-        studentAgg[id] = {
-            id,
-            name: sd.name || "",
-            nis: sd.nis || "",
-            thumbnail: sd.thumbnail || "",
-            attendances: commonStatuses.reduce((o, s) => {
-                o[s] = 0;
-                return o;
-            }, {}),
-            violationData: {
-                "Perlengkapan Belajar": 0,
-                Sikap: 0,
-                Kerapihan: 0,
-            },
-        };
-    });
-
-    attendances.forEach((att) => {
-        if (!att.studentId) return;
-        const sid = att.studentId._id.toString();
-        if (!studentAgg[sid]) return;
-
-        const rawStatus = (att.status || "Tanpa Keterangan").toString().trim();
-        const mapped =
-            statusMap[rawStatus.toLowerCase()] ||
-            rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1);
-        if (studentAgg[sid].attendances.hasOwnProperty(mapped)) {
-            studentAgg[sid].attendances[mapped]++;
-        }
-
-        if (att.violations) {
-            if (att.violations.attribute)
-                studentAgg[sid].violationData["Perlengkapan Belajar"]++;
-            if (att.violations.attitude)
-                studentAgg[sid].violationData["Sikap"]++;
-            if (att.violations.tidiness)
-                studentAgg[sid].violationData["Kerapihan"]++;
-        }
-    });
-
-    // Calculate percentages
-    Object.values(studentAgg).forEach((student) => {
-        const counts = student.attendances;
-        const keys = Object.keys(counts);
-        const total = keys.reduce((s, k) => s + counts[k], 0);
-        if (total === 0) {
-            keys.forEach((k) => (counts[k] = 0));
-            return;
-        }
-        const percentages = keys.map((k) =>
-            Math.round((counts[k] / total) * 100)
-        );
-        const sum = percentages.reduce((a, b) => a + b, 0);
-        if (sum !== 100) {
-            const maxIndex = percentages.indexOf(Math.max(...percentages));
-            percentages[maxIndex] += 100 - sum;
-        }
-        keys.forEach((k, i) => (counts[k] = percentages[i]));
-    });
-
-    return Object.values(studentAgg).sort((a, b) =>
-        (a.name || "").localeCompare(b.name || "")
-    );
-};
-
-// Helper function to compute overall stats
-const computeOverallStats = (atts) => {
-    const statusCounts = atts.reduce((acc, a) => {
-        const s = a.status || "Tanpa Keterangan";
-        acc[s] = (acc[s] || 0) + 1;
-        return acc;
-    }, {});
-    const total = atts.length;
-    if (total === 0) return [];
-
-    const items = Object.keys(statusCounts).map((status) => {
-        const count = statusCounts[status];
-        const rawPct = (count / total) * 100;
-        return {
-            status,
-            count,
-            rawPct,
-            floorPct: Math.floor(rawPct),
-            frac: rawPct - Math.floor(rawPct),
-        };
-    });
-
-    let sumFloor = items.reduce((s, it) => s + it.floorPct, 0);
-    let remainder = 100 - sumFloor;
-    items.sort(
-        (a, b) =>
-            b.frac - a.frac ||
-            b.count - a.count ||
-            a.status.localeCompare(b.status)
-    );
-    for (let i = 0; i < items.length && remainder > 0; i++) {
-        items[i].floorPct += 1;
-        remainder -= 1;
-    }
-    if (remainder !== 0) {
-        const maxIdx = items.reduce(
-            (maxI, it, idx) => (it.count > items[maxI].count ? idx : maxI),
-            0
-        );
-        items[maxIdx].floorPct += remainder;
-    }
-
-    return items
-        .map((it) => ({
-            status: it.status,
-            count: it.count,
-            percentage: it.floorPct,
-        }))
-        .sort((a, b) => a.status.localeCompare(b.status));
-};
-
-// Helper function to compute violation stats
-const computeViolationStats = (atts) => {
-    const violationCounts = {};
-    atts.forEach((a) => {
-        if (!a.violations || typeof a.violations !== "object") return;
-        Object.entries(a.violations).forEach(([violation, occurred]) => {
-            if (occurred)
-                violationCounts[violation] =
-                    (violationCounts[violation] || 0) + 1;
-        });
-    });
-    return Object.entries(violationCounts).map(([violation, count]) => ({
-        violation,
-        count,
-    }));
-};
-
-// Helper function to build class-grouped data
-const buildClassGroupedData = async (
-    attendances,
-    studentsData,
-    rosterClassIds
-) => {
-    const classIdsToGroup =
-        rosterClassIds?.length > 0
-            ? rosterClassIds
-            : [
-                  ...new Set(
-                      attendances
-                          .map((a) => a.classId?._id.toString())
-                          .filter(Boolean)
-                  ),
-              ];
-
-    if (classIdsToGroup.length === 0) return [];
-
-    const classesForGroup = await Class.find({ _id: { $in: classIdsToGroup } })
-        .select("_id name students")
-        .lean();
-    const classStudentMap = {};
-    classesForGroup.forEach((c) => {
-        classStudentMap[c._id.toString()] = new Set(
-            (c.students || []).map((s) => s.toString())
-        );
-    });
-
-    return classesForGroup
-        .map((c) => {
-            const cId = c._id.toString();
-            const studentsInClass = studentsData.filter((sd) =>
-                classStudentMap[cId]?.has(sd.id)
-            );
-            const attendancesForClass = attendances.filter(
-                (a) => a.classId?._id.toString() === cId
-            );
-
-            const overallArr = computeOverallStats(attendancesForClass);
-            const attendancesObj = overallArr.reduce((o, it) => {
-                o[it.status] = it.percentage;
-                return o;
-            }, {});
-
-            const uniqueDates = new Set(
-                attendancesForClass
-                    .map((a) =>
-                        a.forDate
-                            ? new Date(a.forDate).toISOString().slice(0, 10)
-                            : null
-                    )
-                    .filter(Boolean)
-            );
-
-            return {
-                classId: cId,
-                clsName: c.name || "",
-                studentsCount: studentsInClass.length,
-                attendances: attendancesObj,
-                violationStats: computeViolationStats(attendancesForClass),
-                attendancesCount: uniqueDates.size,
-            };
-        })
-        .filter((g) => g.studentsCount > 0);
-};
-
-// Helper function to find student's class in academic year
-const findStudentClass = async (academicYearId, studentId) => {
-    const academicYear = await AcademicYear.findById(academicYearId)
-        .populate({
-            path: "branchYears",
-            populate: {
-                path: "teachingGroups",
-                populate: {
-                    path: "classes",
-                    select: "_id name students teachers",
-                    populate: { path: "teachers", select: "_id name nig" },
-                },
-            },
-        })
-        .select("name branchYears");
-
-    if (!academicYear) throw new HttpError("AcademicYear not found!", 404);
-
-    let foundClass = null;
-    for (const branchYear of academicYear.branchYears || []) {
-        if (!branchYear.teachingGroups) continue;
-        for (const tg of branchYear.teachingGroups) {
-            if (!tg.classes) continue;
-            for (const cls of tg.classes) {
-                if (
-                    cls.students &&
-                    cls.students
-                        .map((s) => s.toString())
-                        .includes(studentId.toString())
-                ) {
-                    foundClass = cls;
-                    break;
-                }
-            }
-            if (foundClass) break;
-        }
-        if (foundClass) break;
-    }
-
-    if (!foundClass)
-        throw new HttpError(
-            "Student not found in the provided academic year!",
-            404
-        );
-
-    return { academicYear, foundClass };
-};
-
-// Helper function to fetch attendances for student report
-const fetchStudentAttendances = async (studentId, classId, start, end) => {
-    const filter = {
-        studentId,
-        classId,
-        forDate: { $gte: start, $lte: end },
-    };
-
-    return await Attendance.find(filter)
-        .populate({ path: "studentId", select: ["name", "nis"] })
-        .populate({
-            path: "classId",
-            select: "name teachers",
-            populate: { path: "teachers", select: ["_id", "name", "nig"] },
-        })
-        .populate({
-            path: "teachingGroupId",
-            select: "name branchYearId subBranches",
-            populate: [
-                {
-                    path: "branchYearId",
-                    select: "branchId",
-                    populate: { path: "branchId", select: "name" },
-                },
-                { path: "subBranches", select: "name" },
-            ],
-        })
-        .populate({ path: "branchId", select: "name" })
-        .populate({ path: "subBranchId", select: "name" })
-        .sort({ forDate: 1 });
-};
-
-// Helper function to compute attendance data for student report
-const computeStudentAttendanceData = (attendances) => {
-    const total = attendances.length;
-    const attendanceCounts = {};
-    const violationCounts = { attribute: 0, attitude: 0, tidiness: 0 };
-    const teachersNotes = [];
-
-    attendances.forEach((att) => {
-        const s = att.status || "Tanpa Keterangan";
-        attendanceCounts[s] = (attendanceCounts[s] || 0) + 1;
-
-        if (att.violations) {
-            if (att.violations.attribute) violationCounts.attribute++;
-            if (att.violations.attitude) violationCounts.attitude++;
-            if (att.violations.tidiness) violationCounts.tidiness++;
-        }
-
-        if (att.teachersNotes && String(att.teachersNotes).trim().length > 0) {
-            const noteDate = att.forDate
-                ? new Date(att.forDate)
-                : att.timestamp
-                ? new Date(att.timestamp)
-                : null;
-            const formattedDate = noteDate
-                ? new Intl.DateTimeFormat("id-ID", {
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                  }).format(noteDate)
-                : "";
-            teachersNotes.push({
-                noteContent: att.teachersNotes,
-                noteDate: formattedDate,
-            });
-        }
-    });
-
-    const attendanceData = [];
-    if (total > 0) {
-        const items = Object.keys(attendanceCounts).map((status) => {
-            const count = attendanceCounts[status];
-            const rawPct = (count / total) * 100;
-            return {
-                status,
-                count,
-                rawPct,
-                floorPct: Math.floor(rawPct),
-                frac: rawPct - Math.floor(rawPct),
-            };
-        });
-
-        let sumFloor = items.reduce((s, it) => s + it.floorPct, 0);
-        let remainder = 100 - sumFloor;
-
-        items.sort(
-            (a, b) =>
-                b.frac - a.frac ||
-                b.count - a.count ||
-                a.status.localeCompare(b.status)
-        );
-        for (let i = 0; i < items.length && remainder > 0; i++) {
-            items[i].floorPct += 1;
-            remainder -= 1;
-        }
-
-        if (remainder !== 0) {
-            const maxIdx = items.reduce(
-                (maxI, it, idx) => (it.count > items[maxI].count ? idx : maxI),
-                0
-            );
-            items[maxIdx].floorPct += remainder;
-        }
-
-        items.forEach((it) =>
-            attendanceData.push({
-                status: it.status,
-                count: it.count,
-                percentage: String(it.floorPct),
-            })
-        );
-    }
-
-    const violationData = Object.keys(violationCounts).map((key) => ({
-        violation: key,
-        count: violationCounts[key],
-    }));
-
-    return { attendanceData, violationData, teachersNotes };
-};
-
-// Helper function to build student and class data
-const buildStudentAndClassData = async (
-    attendances,
-    studentId,
-    foundClass,
-    academicYear,
-    start,
-    end
-) => {
-    let studentDoc = null;
-    if (attendances[0] && attendances[0].studentId) {
-        studentDoc = attendances[0].studentId;
-    } else {
-        studentDoc = await Student.findById(studentId).select("name nis");
-    }
-
-    let branchName = "";
-    let subBranchName = "";
-    if (attendances[0]) {
-        branchName = attendances[0].branchId
-            ? attendances[0].branchId.name || ""
-            : "";
-        subBranchName = attendances[0].subBranchId
-            ? attendances[0].subBranchId.name || ""
-            : "";
-    }
-
-    if (!branchName || !subBranchName) {
-        const classFull = await Class.findById(foundClass._id)
+        teachingGroupYears = await TeachingGroupYear.find(filter)
             .populate({
-                path: "teachingGroupId",
+                path: "classes",
                 populate: [
                     {
-                        path: "branchYearId",
-                        populate: { path: "branchId", select: "name" },
+                        path: "attendances",
+                        populate: {
+                            path: "studentId",
+                            select: ["name", "nis", "image", "thumbnail"],
+                        },
                     },
-                    { path: "subBranches", select: "name" },
+                    { path: "teachers", select: ["name", "nig"] },
                 ],
             })
-            .populate({ path: "teachers", select: ["_id", "name", "nig"] });
-        if (!branchName && classFull?.teachingGroupId?.branchYearId?.branchId) {
-            branchName =
-                classFull.teachingGroupId.branchYearId.branchId.name || "";
+            .populate({
+                path: "teachingGroupId",
+                select: "name",
+                populate: {
+                    path: "branchId",
+                    select: "name",
+                },
+            });
+
+        if (startDate && endDate) {
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            teachingGroupYears = teachingGroupYears.map((teachingGroupYear) => {
+                const filteredClasses = teachingGroupYear.classes.map((cls) => {
+                    const filteredAttendances = cls.attendances.filter(
+                        (attendance) => {
+                            const attendanceDate = new Date(attendance.forDate);
+                            return (
+                                attendanceDate >= start && attendanceDate <= end
+                            );
+                        }
+                    );
+                    // Use toObject to create a copy, modify attendance, then return
+                    const updatedClass = cls.toObject();
+                    updatedClass.attendances = filteredAttendances;
+                    return updatedClass;
+                });
+
+                const updatedTeachingGroupYear = teachingGroupYear.toObject();
+                updatedTeachingGroupYear.classes = filteredClasses;
+                return updatedTeachingGroupYear;
+            });
         }
-        if (
-            !subBranchName &&
-            classFull?.teachingGroupId?.subBranches?.length > 0
-        ) {
-            subBranchName = classFull.teachingGroupId.subBranches[0].name || "";
+
+        if (branchId) {
+            teachingGroupYears = teachingGroupYears.filter(
+                (teachingGroupYear) =>
+                    teachingGroupYear.teachingGroupId.branchId._id.toString() ===
+                    branchId
+            );
         }
-        if (!foundClass.teachers && classFull?.teachers) {
-            foundClass.teachers = classFull.teachers;
+
+        if (teachingGroupId) {
+            teachingGroupYears = teachingGroupYears.filter(
+                (teachingGroupYear) =>
+                    teachingGroupYear.teachingGroupId._id.toString() ===
+                    teachingGroupId
+            );
         }
-    }
 
-    const studentData = {
-        nis: studentDoc ? studentDoc.nis || "" : "",
-        name: studentDoc ? studentDoc.name || "" : "",
-        branchName,
-        subBranchName,
-        period: `${new Intl.DateTimeFormat("id-ID", {
-            day: "numeric",
-            month: "long",
-            year: "numeric",
-        }).format(start)} - ${new Intl.DateTimeFormat("id-ID", {
-            day: "numeric",
-            month: "long",
-            year: "numeric",
-        }).format(end)}`,
-    };
+        console.log(teachingGroupYears);
 
-    const classData = {
-        name: foundClass.name || "",
-        academicYearName: academicYear.name || "",
-        teachers: (foundClass.teachers || []).map((t) => ({
-            _id: t._id,
-            name: t.name,
-            nig: t.nig,
-        })),
-    };
+        if (classId) {
+            //ClassId Filter
+            teachingGroupYears = teachingGroupYears
+                .map((teachingGroupYear) => {
+                    const teachingGroupYearCopy = teachingGroupYear; // Create a copy FIRST
+                    teachingGroupYearCopy.classes =
+                        teachingGroupYearCopy.classes.filter(
+                            (cls) => cls._id.toString() === classId
+                        );
+                    if (teachingGroupYearCopy.classes.length > 0) {
+                        return teachingGroupYearCopy; // Return the copy
+                    } else {
+                        return null; // Handle cases where classId isn't found
+                    }
+                })
+                .filter(Boolean); // Remove any nulls
+        }
 
-    return { studentData, classData };
-};
+        console.log(teachingGroupYears);
 
-const getAttendanceReports = async (req, res, next) => {
-    const { academicYearId, studentId, startDate, endDate } = req.body;
+        if (!teachingGroupYears || teachingGroupYears.length === 0) {
+            console.log("No matching attendances found for the given filters.");
+            return res.status(200).json([]); // Or handle not found error if that's preferred
+        }
 
-    // Validate required filters
-    if (!academicYearId || !studentId || !startDate || !endDate) {
-        return next(
-            new HttpError(
-                "academicYearId, studentId, startDate and endDate are required!",
-                400
-            )
-        );
-    }
+        const getOverallStats = (data) => {
+            const attendances = [];
+            data.forEach((year) => {
+                year.classes.forEach((cls) => {
+                    cls.attendances.forEach((att) => {
+                        attendances.push(att.status);
+                    });
+                });
+            });
+            const statusCounts = attendances.reduce((acc, status) => {
+                acc[status] = (acc[status] || 0) + 1;
+                return acc;
+            }, {});
+            const total = attendances.length;
+            return Object.keys(statusCounts)
+                .map((status) => ({
+                    status,
+                    count: statusCounts[status],
+                    percentage:
+                        Math.round((statusCounts[status] / total) * 10000) /
+                        100,
+                }))
+                .sort((a, b) => a.status.localeCompare(b.status));
+        };
 
-    // Parse dates and normalize to include full end day
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-        return next(
-            new HttpError("Invalid date format for startDate or endDate!", 400)
-        );
-    }
-    start.setHours(0, 0, 0, 0);
-    end.setHours(23, 59, 59, 999);
+        const getViolationStats = (data) => {
+            const violationCounts = {};
 
-    try {
-        // Find student's class
-        const { academicYear, foundClass } = await findStudentClass(
-            academicYearId,
-            studentId
-        );
+            data.forEach((groupYear) => {
+                groupYear.classes.forEach((cls) => {
+                    cls.attendances.forEach((attendance) => {
+                        Object.entries(attendance.violations).forEach(
+                            ([violation, occurred]) => {
+                                if (occurred) {
+                                    violationCounts[violation] =
+                                        (violationCounts[violation] || 0) + 1;
+                                }
+                            }
+                        );
+                    });
+                });
+            });
 
-        // Fetch attendances
-        const attendances = await fetchStudentAttendances(
-            studentId,
-            foundClass._id,
-            start,
-            end
-        );
+            return Object.entries(violationCounts).map(
+                ([violation, count]) => ({ violation, count })
+            );
+        };
 
-        // Compute aggregates
-        const { attendanceData, violationData, teachersNotes } =
-            computeStudentAttendanceData(attendances);
-
-        // Build student and class data
-        const { studentData, classData } = await buildStudentAndClassData(
-            attendances,
-            studentId,
-            foundClass,
-            academicYear,
-            start,
-            end
-        );
-
-        console.log(
-            `Retrieved student attendance report based on filters (${studentId})`
-        );
+        console.log("TEASTSTSRT" + getOverallStats(teachingGroupYears));
+        console.log(`Retrieved attendance reports based on filters`);
         return res.status(200).json({
-            attendanceData,
-            violationData,
-            teachersNotes,
-            studentData,
-            classData,
+            teachingGroupYears,
+            overallStats: getOverallStats(teachingGroupYears),
+            violationStats: getViolationStats(teachingGroupYears),
         });
     } catch (error) {
-        console.error("Error retrieving student attendance report:", error);
+        console.error("Error retrieving attendance reports:", error);
         return next(new HttpError("Internal server error occurred!", 500));
     }
 };
 
-exports.getAttendanceOverview = getAttendanceOverview;
 exports.getAttendanceReports = getAttendanceReports;
 
 exports.getAttendanceById = getAttendanceById;

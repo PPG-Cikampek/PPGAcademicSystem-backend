@@ -21,6 +21,7 @@ const materialProgressesRoutes = require("./routes/materialProgresses-route");
 const munaqasyahRoutes = require("./routes/munaqasyahs-route");
 const scoreRoutes = require("./routes/scores-route");
 const HttpError = require("./models/http-error");
+const { MongoClient } = require("mongodb");
 
 const app = express();
 const PORT = 5000;
@@ -104,8 +105,26 @@ app.use((error, req, res, next) => {
 // Connect to MongoDB and start the server
 mongoose
     .connect(MONGO_URI, clientOptions)
-    .then(() => {
+    .then(async () => {
         console.log(`Connected to MongoDB -> ${process.env.DB_NAME}`);
+
+        // Log MongoDB server version using a MongoClient
+        const mongoClient = new MongoClient(MONGO_URI, clientOptions);
+        try {
+            await mongoClient.connect();
+            const adminDb = mongoClient.db().admin();
+            const info = await adminDb.serverStatus();
+            console.log("MongoDB Version:", info.version);
+        } catch (err) {
+            console.error("Error fetching MongoDB version:", err);
+        } finally {
+            try {
+                await mongoClient.close();
+            } catch (closeErr) {
+                console.error("Error closing MongoClient:", closeErr);
+            }
+        }
+
         app.listen(process.env.PORT || PORT, () => {
             console.log(
                 `Server is running on http://localhost:${
