@@ -386,12 +386,12 @@ const getAttendanceOverview = async (req, res, next) => {
                 ? teacherClassIds.map((id) => toId(id))
                 : null;
         const classIdStr = classId ? toId(classId) : null;
-        console.log(
-            "[getAttendanceOverview] teacherClassIdsArr:",
-            teacherClassIdsArr,
-            "classIdStr:",
-            classIdStr
-        );
+        // console.log(
+        //     "[getAttendanceOverview] teacherClassIdsArr:",
+        //     teacherClassIdsArr,
+        //     "classIdStr:",
+        //     classIdStr
+        // );
 
         // Build base attendance filter from provided parameters
         const attendanceFilter = {};
@@ -402,21 +402,21 @@ const getAttendanceOverview = async (req, res, next) => {
         if (teacherClassIdsArr)
             attendanceFilter.classId = { $in: teacherClassIdsArr };
         else if (classIdStr) attendanceFilter.classId = classIdStr;
-        console.log(
-            "[getAttendanceOverview] Initial attendanceFilter:",
-            attendanceFilter
-        );
+        // console.log(
+        //     "[getAttendanceOverview] Initial attendanceFilter:",
+        //     attendanceFilter
+        // );
 
         // Apply date range filter if startDate and endDate are provided
         if (startDate && endDate) {
             const s = new Date(startDate);
             const e = new Date(endDate);
             if (isNaN(s.getTime()) || isNaN(e.getTime())) {
-                console.log(
-                    "[getAttendanceOverview] Invalid date format:",
-                    startDate,
-                    endDate
-                );
+                // console.log(
+                //     "[getAttendanceOverview] Invalid date format:",
+                //     startDate,
+                //     endDate
+                // );
                 return next(
                     new HttpError(
                         "Invalid date format for startDate or endDate!",
@@ -425,10 +425,10 @@ const getAttendanceOverview = async (req, res, next) => {
                 );
             }
             attendanceFilter.forDate = { $gte: s, $lte: e };
-            console.log(
-                "[getAttendanceOverview] Date range filter applied:",
-                attendanceFilter.forDate
-            );
+            // console.log(
+            //     "[getAttendanceOverview] Date range filter applied:",
+            //     attendanceFilter.forDate
+            // );
         }
 
         // Simplified academic year validation: Load academic year and flatten class IDs
@@ -444,16 +444,16 @@ const getAttendanceOverview = async (req, res, next) => {
                     },
                 })
                 .lean();
-            console.log(
-                "[getAttendanceOverview] Loaded academicYear:",
-                academicYear
-            );
+            // console.log(
+            //     "[getAttendanceOverview] Loaded academicYear:",
+            //     academicYear
+            // );
 
             if (!academicYear) {
-                console.log(
-                    "[getAttendanceOverview] No academicYear found for:",
-                    academicYearId
-                );
+                // console.log(
+                //     "[getAttendanceOverview] No academicYear found for:",
+                //     academicYearId
+                // );
                 return res.status(200).json(emptyResponse);
             }
 
@@ -466,10 +466,10 @@ const getAttendanceOverview = async (req, res, next) => {
                     }
                 }
             }
-            console.log(
-                "[getAttendanceOverview] Flattened classIds:",
-                classIds
-            );
+            // console.log(
+            //     "[getAttendanceOverview] Flattened classIds:",
+            //     classIds
+            // );
 
             if (classIds.length === 0) {
                 console.log(
@@ -483,10 +483,10 @@ const getAttendanceOverview = async (req, res, next) => {
                 const requestedIds = attendanceFilter.classId.$in
                     ? attendanceFilter.classId.$in.map(toId)
                     : [toId(attendanceFilter.classId)];
-                console.log(
-                    "[getAttendanceOverview] Requested classIds:",
-                    requestedIds
-                );
+                // console.log(
+                //     "[getAttendanceOverview] Requested classIds:",
+                //     requestedIds
+                // );
 
                 if (!requestedIds.every((id) => classIds.includes(id))) {
                     console.log(
@@ -505,7 +505,7 @@ const getAttendanceOverview = async (req, res, next) => {
         // Determine final class IDs for roster collection based on inputs
         const rosterClassIds =
             teacherClassIdsArr || (classIdStr ? [classIdStr] : classIds);
-        console.log("[getAttendanceOverview] rosterClassIds:", rosterClassIds);
+        // console.log("[getAttendanceOverview] rosterClassIds:", rosterClassIds);
 
         // Pre-collect student IDs from classes and apply subBranch filtering if specified
         let finalStudentIds = [];
@@ -513,35 +513,35 @@ const getAttendanceOverview = async (req, res, next) => {
             const classes = await Class.find({ _id: { $in: rosterClassIds } })
                 .select("students")
                 .lean();
-            console.log(
-                "[getAttendanceOverview] Loaded classes for rosterClassIds:",
-                classes
-            );
+            // console.log(
+            //     "[getAttendanceOverview] Loaded classes for rosterClassIds:",
+            //     classes
+            // );
             const rosterStudentIds = [
                 ...new Set(
                     classes.flatMap((c) => (c.students || []).map(toId))
                 ),
             ];
-            console.log(
-                "[getAttendanceOverview] rosterStudentIds:",
-                rosterStudentIds
-            );
+            // console.log(
+            //     "[getAttendanceOverview] rosterStudentIds:",
+            //     rosterStudentIds
+            // );
 
             if (subBranchId) {
                 const usersInSub = await User.find({ subBranchId })
                     .select("_id")
                     .lean();
                 const userIds = usersInSub.map((u) => toId(u));
-                console.log(
-                    "[getAttendanceOverview] userIds in subBranch:",
-                    userIds
-                );
+                // console.log(
+                //     "[getAttendanceOverview] userIds in subBranch:",
+                //     userIds
+                // );
 
                 if (userIds.length === 0) {
-                    console.log(
-                        "[getAttendanceOverview] No users found in subBranch:",
-                        subBranchId
-                    );
+                    // console.log(
+                    //     "[getAttendanceOverview] No users found in subBranch:",
+                    //     subBranchId
+                    // );
                     return res.status(200).json(emptyResponse);
                 }
 
@@ -551,19 +551,19 @@ const getAttendanceOverview = async (req, res, next) => {
                 })
                     .select("_id")
                     .lean();
-                console.log(
-                    "[getAttendanceOverview] filteredStudents:",
-                    filteredStudents
-                );
+                // console.log(
+                //     "[getAttendanceOverview] filteredStudents:",
+                //     filteredStudents
+                // );
 
                 finalStudentIds = filteredStudents.map((s) => toId(s));
             } else {
                 finalStudentIds = rosterStudentIds;
             }
-            console.log(
-                "[getAttendanceOverview] finalStudentIds:",
-                finalStudentIds
-            );
+            // console.log(
+            //     "[getAttendanceOverview] finalStudentIds:",
+            //     finalStudentIds
+            // );
 
             if (finalStudentIds.length === 0) {
                 console.log(
@@ -578,10 +578,10 @@ const getAttendanceOverview = async (req, res, next) => {
         if (finalStudentIds.length > 0) {
             completeFilter.studentId = { $in: finalStudentIds };
         }
-        console.log(
-            "[getAttendanceOverview] completeFilter for Attendance.find:",
-            completeFilter
-        );
+        // console.log(
+        //     "[getAttendanceOverview] completeFilter for Attendance.find:",
+        //     completeFilter
+        // );
 
         const attendances = await Attendance.find(completeFilter)
             .populate({
@@ -672,7 +672,7 @@ const getAttendanceOverview = async (req, res, next) => {
                 }))
                 .sort((a, b) => a.status.localeCompare(b.status));
 
-            console.log("[getAttendanceOverview] getOverallStats:", statsArr);
+            // console.log("[getAttendanceOverview] getOverallStats:", statsArr);
             return statsArr;
         };
 
@@ -692,7 +692,7 @@ const getAttendanceOverview = async (req, res, next) => {
             const statsArr = Object.entries(violationCounts).map(
                 ([violation, count]) => ({ violation, count })
             );
-            console.log("[getAttendanceOverview] getViolationStats:", statsArr);
+            // console.log("[getAttendanceOverview] getViolationStats:", statsArr);
             return statsArr;
         };
 
@@ -753,10 +753,10 @@ const getAttendanceOverview = async (req, res, next) => {
                 },
             };
         });
-        console.log(
-            "[getAttendanceOverview] Initialized studentAgg:",
-            studentAgg
-        );
+        // console.log(
+        //     "[getAttendanceOverview] Initialized studentAgg:",
+        //     studentAgg
+        // );
 
         // Aggregate attendance data into studentAgg
         attendances.forEach((att) => {
@@ -803,10 +803,10 @@ const getAttendanceOverview = async (req, res, next) => {
                     studentAgg[sid].violationData["Kerapihan"]++;
             }
         });
-        console.log(
-            "[getAttendanceOverview] Aggregated studentAgg:",
-            studentAgg
-        );
+        // console.log(
+        //     "[getAttendanceOverview] Aggregated studentAgg:",
+        //     studentAgg
+        // );
 
         // Calculate percentages for each student's attendance statuses
         Object.values(studentAgg).forEach((student) => {
@@ -836,16 +836,16 @@ const getAttendanceOverview = async (req, res, next) => {
                 counts[k] = percentages[i];
             });
         });
-        console.log(
-            "[getAttendanceOverview] studentAgg after percentage calculation:",
-            studentAgg
-        );
+        // console.log(
+        //     "[getAttendanceOverview] studentAgg after percentage calculation:",
+        //     studentAgg
+        // );
 
         // Sort studentsData alphabetically by name
         const studentsData = Object.values(studentAgg).sort((a, b) =>
             (a.name || "").localeCompare(b.name || "")
         );
-        console.log("[getAttendanceOverview] studentsData:", studentsData);
+        // console.log("[getAttendanceOverview] studentsData:", studentsData);
 
         // Build studentsDataByClass for subBranchAdmin role only
         let studentsDataByClass = [];
@@ -860,10 +860,10 @@ const getAttendanceOverview = async (req, res, next) => {
                                   .filter(Boolean)
                           ),
                       ];
-            console.log(
-                "[getAttendanceOverview] classIdsToGroup for subBranchAdmin:",
-                classIdsToGroup
-            );
+            // console.log(
+            //     "[getAttendanceOverview] classIdsToGroup for subBranchAdmin:",
+            //     classIdsToGroup
+            // );
 
             if (classIdsToGroup.length > 0) {
                 const classesForGroup = await Class.find({
@@ -877,10 +877,10 @@ const getAttendanceOverview = async (req, res, next) => {
                         (c.students || []).map(toId)
                     );
                 });
-                console.log(
-                    "[getAttendanceOverview] classesForGroup:",
-                    classesForGroup
-                );
+                // console.log(
+                //     "[getAttendanceOverview] classesForGroup:",
+                //     classesForGroup
+                // );
 
                 studentsDataByClass = classesForGroup
                     .map((c) => {
@@ -920,10 +920,10 @@ const getAttendanceOverview = async (req, res, next) => {
                         };
                     })
                     .filter((g) => g.studentsCount > 0);
-                console.log(
-                    "[getAttendanceOverview] studentsDataByClass:",
-                    studentsDataByClass
-                );
+                // console.log(
+                //     "[getAttendanceOverview] studentsDataByClass:",
+                //     studentsDataByClass
+                // );
             }
         }
 
