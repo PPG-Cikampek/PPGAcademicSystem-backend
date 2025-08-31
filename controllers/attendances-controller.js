@@ -847,9 +847,12 @@ const getAttendanceOverview = async (req, res, next) => {
         );
         // console.log("[getAttendanceOverview] studentsData:", studentsData);
 
-        // Build studentsDataByClass for subBranchAdmin role only
+        // Build studentsDataByClass for subBranchAdmin ND branchAdmin role only
         let studentsDataByClass = [];
-        if (req.userData.userRole === "subBranchAdmin") {
+        if (
+            req.userData.userRole === "subBranchAdmin" ||
+            req.userData.userRole === "branchAdmin"
+        ) {
             const classIdsToGroup =
                 rosterClassIds?.length > 0
                     ? rosterClassIds
@@ -927,6 +930,135 @@ const getAttendanceOverview = async (req, res, next) => {
             }
         }
 
+        // Build additional grouped data for branchAdmin: by teaching group and by sub-branch
+        let studentsDataByTeachingGroup = [];
+        let studentsDataBySubBranch = [];
+        if (req.userData.userRole === "branchAdmin") {
+            // Teaching group grouping: derive teachingGroupIds from attendances
+            const teachingGroupIds = [
+                ...new Set(
+                    attendances
+                        .map((a) => toId(a.teachingGroupId))
+                        .filter(Boolean)
+                ),
+            ];
+
+            if (teachingGroupIds.length > 0) {
+                // For each teaching group, collect classes belonging to it and union their students
+                const tgPromises = teachingGroupIds.map(async (tgId) => {
+                    // Find classes that belong to this teaching group
+                    const classesForTg = await Class.find({
+                        teachingGroupId: tgId,
+                    })
+                        .select("_id name students")
+                        .lean();
+
+                    const classStudentSet = new Set(
+                        classesForTg.flatMap((c) =>
+                            (c.students || []).map(toId)
+                        )
+                    );
+
+                    const studentsInGroup = studentsData.filter((sd) =>
+                        classStudentSet.has(sd.id)
+                    );
+
+                    const attendancesForGroup = attendances.filter(
+                        (a) => toId(a.teachingGroupId) === tgId
+                    );
+
+                    const overallArr = getOverallStats(attendancesForGroup);
+                    const attendancesObj = overallArr.reduce((o, it) => {
+                        o[it.status] = it.percentage;
+                        return o;
+                    }, {});
+
+                    const uniqueDates = new Set(
+                        attendancesForGroup.map(
+                            (a) =>
+                                a.forDate &&
+                                new Date(a.forDate).toISOString().slice(0, 10)
+                        )
+                    );
+
+                    // Try to get teaching group name from populated attendances
+                    const tgName =
+                        attendances.find(
+                            (a) => toId(a.teachingGroupId) === tgId
+                        )?.teachingGroupId?.name || "";
+
+                    return {
+                        teachingGroupId: tgId,
+                        teachingGroupName: tgName,
+                        studentsCount: studentsInGroup.length,
+                        attendances: attendancesObj,
+                        violationStats: getViolationStats(attendancesForGroup),
+                        attendancesCount: uniqueDates.size,
+                    };
+                });
+
+                studentsDataByTeachingGroup = (
+                    await Promise.all(tgPromises)
+                ).filter((g) => g.studentsCount > 0);
+            }
+
+            // Sub-branch grouping: derive subBranchIds from attendances (populated)
+            const subBranchIds = [
+                ...new Set(
+                    attendances.map((a) => toId(a.subBranchId)).filter(Boolean)
+                ),
+            ];
+
+            if (subBranchIds.length > 0) {
+                studentsDataBySubBranch = subBranchIds
+                    .map((sbId) => {
+                        const attendancesForSub = attendances.filter(
+                            (a) => toId(a.subBranchId) === sbId
+                        );
+
+                        const uniqueStudentIds = new Set(
+                            attendancesForSub
+                                .map((a) => toId(a.studentId))
+                                .filter(Boolean)
+                        );
+
+                        const studentsInSub = studentsData.filter((sd) =>
+                            uniqueStudentIds.has(sd.id)
+                        );
+
+                        const overallArr = getOverallStats(attendancesForSub);
+                        const attendancesObj = overallArr.reduce((o, it) => {
+                            o[it.status] = it.percentage;
+                            return o;
+                        }, {});
+
+                        const uniqueDates = new Set(
+                            attendancesForSub.map(
+                                (a) =>
+                                    a.forDate &&
+                                    new Date(a.forDate)
+                                        .toISOString()
+                                        .slice(0, 10)
+                            )
+                        );
+
+                        const sbName =
+                            attendancesForSub[0]?.subBranchId?.name || "";
+
+                        return {
+                            subBranchId: sbId,
+                            subBranchName: sbName,
+                            studentsCount: studentsInSub.length,
+                            attendances: attendancesObj,
+                            violationStats:
+                                getViolationStats(attendancesForSub),
+                            attendancesCount: uniqueDates.size,
+                        };
+                    })
+                    .filter((g) => g.studentsCount > 0);
+            }
+        }
+
         console.log(
             `[getAttendanceOverview] Retrieved ${attendances.length} attendance records`
         );
@@ -935,6 +1067,8 @@ const getAttendanceOverview = async (req, res, next) => {
         return res.status(200).json({
             studentsData,
             studentsDataByClass,
+            studentsDataByTeachingGroup,
+            studentsDataBySubBranch,
             overallStats: getOverallStats(attendances),
             violationStats: getViolationStats(attendances),
         });
