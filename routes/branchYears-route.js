@@ -8,6 +8,11 @@ router.get("/", branchYearController.getBranchYears);
 router.get("/:branchYearId", branchYearController.getBranchYearById);
 
 router.get(
+    "/:branchYearId/teaching-groups",
+    branchYearController.getTeachingGroupsByBranchYearId
+);
+
+router.get(
     "/academic-year/:academicYearId/teaching-groups",
     branchYearController.getTeachingGroupsByAcademicYearId
 );

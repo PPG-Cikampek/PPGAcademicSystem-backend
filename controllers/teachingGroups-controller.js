@@ -53,6 +53,25 @@ const getTeachingGroupById = async (req, res, next) => {
     });
 };
 
+const getClassesByTeachingGroupId = async (req, res, next) => {
+    const teachingGroupId = req.params.teachingGroupId;
+
+    let classes;
+    try {
+        classes = await Class.find({ teachingGroupId });
+    } catch (err) {
+        const error = new HttpError(
+            "Fetching classes failed, please try again later.",
+            500
+        );
+        return next(error);
+    }
+
+    res.json({
+        classes: classes.map((cls) => cls.toObject({ getters: true })),
+    });
+};
+
 const createTeachingGroup = async (req, res, next) => {
     const { name, address, branchYearId } = req.body;
 
@@ -451,6 +470,7 @@ const removeClassFromTeachingGroup = async (req, res, next) => {
 
 exports.getTeachingGroups = getTeachingGroups;
 exports.getTeachingGroupById = getTeachingGroupById;
+exports.getClassesByTeachingGroupId = getClassesByTeachingGroupId;
 exports.createTeachingGroup = createTeachingGroup;
 exports.registerSubBranchToTeachingGroup = registerSubBranchToTeachingGroup;
 exports.lockTeachingGroupById = lockTeachingGroupById;

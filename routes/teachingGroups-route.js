@@ -6,6 +6,10 @@ const router = express.Router();
 
 router.get("/", teachingGroupController.getTeachingGroups);
 router.get("/:teachingGroupId", teachingGroupController.getTeachingGroupById);
+router.get(
+    "/:teachingGroupId/classes",
+    teachingGroupController.getClassesByTeachingGroupId
+);
 
 router.post("/", teachingGroupController.createTeachingGroup);
 router.post(

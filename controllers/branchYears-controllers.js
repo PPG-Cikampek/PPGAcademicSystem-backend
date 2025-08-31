@@ -77,6 +77,34 @@ const getBranchYearById = async (req, res, next) => {
     res.json({ branchYear: identifiedBranchYears.toObject({ getters: true }) });
 };
 
+const getTeachingGroupsByBranchYearId = async (req, res, next) => {
+    const branchYearId = req.params.branchYearId;
+
+    let teachingGroups;
+
+    try {
+        teachingGroups = await TeachingGroup.find({ branchYearId });
+    } catch (err) {
+        console.error(err);
+        return next(new HttpError("Internal server error occurred!", 500));
+    }
+
+    if (!teachingGroups || teachingGroups.length === 0) {
+        return next(
+            new HttpError(
+                `No teaching groups found for branch year with ID ${branchYearId}`,
+                404
+            )
+        );
+    }
+
+    res.status(200).json({
+        teachingGroups: teachingGroups.map((x) =>
+            x.toObject({ getters: true })
+        ),
+    });
+};
+
 const getTeachingGroupsByAcademicYearId = async (req, res, next) => {
     const academicYearId = req.params.academicYearId;
 
@@ -705,6 +733,7 @@ const patchSubBranchMunaqasyahStatus = async (req, res, next) => {
 };
 
 exports.getBranchYearById = getBranchYearById;
+exports.getTeachingGroupsByBranchYearId = getTeachingGroupsByBranchYearId;
 exports.getTeachingGroupsByAcademicYearId = getTeachingGroupsByAcademicYearId;
 exports.getBranchYearByAcademicYearIdAndBranchId =
     getBranchYearByAcademicYearIdAndBranchId;
