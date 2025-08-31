@@ -953,6 +953,10 @@ const getAttendanceOverview = async (req, res, next) => {
                         return {
                             classId: cId,
                             clsName: c.name || "",
+                            subBranchId:
+                                attendancesForClass[0]?.subBranchId._id || "",
+                            subBranchName:
+                                attendancesForClass[0]?.subBranchId?.name || "",
                             studentsCount: studentsInClass.length,
                             attendances: attendancesObj,
                             violationStats:
@@ -1086,6 +1090,11 @@ const getAttendanceOverview = async (req, res, next) => {
                         return {
                             subBranchId: sbId,
                             subBranchName: sbName,
+                            teachingGroupId:
+                                attendancesForSub[0]?.teachingGroupId._id || "",
+                            teachingGroupName:
+                                attendancesForSub[0]?.teachingGroupId?.name ||
+                                "",
                             studentsCount: studentsInSub.length,
                             attendances: attendancesObj,
                             violationStats:
