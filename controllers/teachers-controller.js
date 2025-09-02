@@ -1,5 +1,6 @@
 const HttpError = require("../models/http-error");
 const mongoose = require("mongoose");
+const { generateThumbnailBase64 } = require("../utils/thumbnail-generator");
 
 const User = require("../models/user");
 const Branch = require("../models/branch");
@@ -218,7 +219,6 @@ const updateTeacher = async (req, res, next) => {
         address,
         teacherId,
         userId,
-        thumbnail,
     } = req.body;
 
     let teacher;
@@ -232,12 +232,20 @@ const updateTeacher = async (req, res, next) => {
             address,
             isProfileComplete: true,
         };
+
+        let thumbnail = null;
         if (req.file) {
             updateData.image = req.file.path.replace(/\\/g, "/");
             updateData.originalImagePath = req.file.path;
-        }
-        if (thumbnail) {
-            updateData.thumbnail = thumbnail;
+
+            // Generate thumbnail in the backend
+            try {
+                thumbnail = await generateThumbnailBase64(req.file.path);
+                updateData.thumbnail = thumbnail;
+            } catch (thumbnailError) {
+                console.error("Failed to generate thumbnail:", thumbnailError);
+                // Continue without thumbnail if generation fails
+            }
         }
 
         if (teacherId) {
