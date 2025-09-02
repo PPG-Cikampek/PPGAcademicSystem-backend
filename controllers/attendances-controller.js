@@ -10,6 +10,7 @@ const Class = require("../models/class");
 const Student = require("../models/student");
 const Teacher = require("../models/teacher");
 const Attendance = require("../models/attendance");
+const teacher = require("../models/teacher");
 
 const getAttendanceById = async (req, res, next) => {
     const attendanceId = req.params.attendanceId;
@@ -366,6 +367,15 @@ const getAttendanceOverview = async (req, res, next) => {
         startDate,
         endDate,
     } = req.body;
+
+    if (req.userData.userRole === "teacher" && teacherClassIds.length === 0) {
+        return next(
+            new HttpError(
+                "Unauthorized access: No teaching classes found.",
+                403
+            )
+        );
+    }
 
     // Define empty response structure for cases with no data
     const emptyResponse = {
