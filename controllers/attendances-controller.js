@@ -368,7 +368,11 @@ const getAttendanceOverview = async (req, res, next) => {
         endDate,
     } = req.body;
 
-    if (req.userData.userRole === "teacher" && teacherClassIds.length === 0) {
+    console.log(teacherClassIds);
+    if (
+        req.userData.userRole === "teacher" &&
+        (teacherClassIds === undefined || !teacherClassIds.length > 0)
+    ) {
         return next(
             new HttpError(
                 "Unauthorized access: No teaching classes found.",
@@ -1267,6 +1271,7 @@ const getAttendanceReports = async (req, res, next) => {
                     : null;
                 const formattedDate = noteDate
                     ? new Intl.DateTimeFormat("id-ID", {
+                          weekday: "long",
                           day: "numeric",
                           month: "long",
                           year: "numeric",
