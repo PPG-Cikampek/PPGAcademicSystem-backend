@@ -108,6 +108,19 @@ const createNewAttendanceForClass = async (req, res, next) => {
 
         // Step 1: Create attendance documents
         for (const studentId of students) {
+            // Check if attendance already exists
+            const existingAttendance = await Attendance.findOne(
+                { forDate, studentId },
+                null,
+                { session }
+            );
+            if (existingAttendance) {
+                console.log(
+                    `Attendance for student ${studentId} on ${forDate} already exists, skipping.`
+                );
+                continue;
+            }
+
             const attendance = new Attendance({
                 forDate,
                 timestamp,
@@ -128,22 +141,7 @@ const createNewAttendanceForClass = async (req, res, next) => {
 
             const createdAttendance = await attendance.save({ session });
             attendances.push(createdAttendance);
-
-            // Step 2: Update the respective student document with the created attendance ID
-            // await Student.findByIdAndUpdate(
-            //     studentId,
-            //     { $push: { attendanceIds: createdAttendance._id } },
-            //     { session }
-            // );
         }
-
-        // Step 3: Update class schema with all attendance references
-        // const attendanceIds = attendances.map(attendance => attendance._id);
-        // await Class.findByIdAndUpdate(
-        //     classId,
-        //     { $push: { attendances: { $each: attendanceIds } } },
-        //     { session }
-        // );
 
         // Commit the transaction
         await session.commitTransaction();
