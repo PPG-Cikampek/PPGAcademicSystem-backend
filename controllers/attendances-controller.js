@@ -722,7 +722,7 @@ const getAttendanceOverview = async (req, res, next) => {
                 }))
                 .sort((a, b) => a.status.localeCompare(b.status));
 
-            // console.log("[getAttendanceOverview] getOverallStats:", statsArr);
+            console.log("[getAttendanceOverview] getOverallStats:", statsArr);
             return statsArr;
         };
 
@@ -744,6 +744,43 @@ const getAttendanceOverview = async (req, res, next) => {
             );
             // console.log("[getAttendanceOverview] getViolationStats:", statsArr);
             return statsArr;
+        };
+
+        // Consolidate 'Hadir' and 'Terlambat' into 'Hadir'
+        const consolidateStats = (statsArr) => {
+            let hadirCount = 0;
+            let terlambatCount = 0;
+            const otherStats = [];
+            statsArr.forEach((stat) => {
+                if (stat.status === "Hadir") hadirCount += stat.count;
+                else if (stat.status === "Terlambat")
+                    terlambatCount += stat.count;
+                else otherStats.push(stat);
+            });
+            const totalCount =
+                hadirCount +
+                terlambatCount +
+                otherStats.reduce((sum, s) => sum + s.count, 0);
+            if (totalCount === 0) return [];
+            const newHadir = {
+                status: "Hadir",
+                count: hadirCount + terlambatCount,
+            };
+            const allStats = [newHadir, ...otherStats];
+            // Recalculate percentages
+            allStats.forEach((stat) => {
+                stat.percentage = Math.round((stat.count / totalCount) * 100);
+            });
+            // Adjust to sum to 100
+            let sum = allStats.reduce((s, stat) => s + stat.percentage, 0);
+            if (sum !== 100) {
+                const maxStat = allStats.reduce(
+                    (max, stat) => (stat.count > max.count ? stat : max),
+                    allStats[0]
+                );
+                maxStat.percentage += 100 - sum;
+            }
+            return allStats.sort((a, b) => a.status.localeCompare(b.status));
         };
 
         // Fetch student data for aggregation
@@ -943,7 +980,11 @@ const getAttendanceOverview = async (req, res, next) => {
                     );
 
                     const overallArr = getOverallStats(attendancesForClass);
-                    const attendancesObj = overallArr.reduce((o, it) => {
+                    const consolidatedArr =
+                        req.userData.userRole !== "admin"
+                            ? consolidateStats(overallArr)
+                            : overallArr;
+                    const attendancesObj = consolidatedArr.reduce((o, it) => {
                         o[it.status] = it.percentage;
                         return o;
                     }, {});
@@ -1015,7 +1056,11 @@ const getAttendanceOverview = async (req, res, next) => {
                     );
 
                     const overallArr = getOverallStats(attendancesForGroup);
-                    const attendancesObj = overallArr.reduce((o, it) => {
+                    const consolidatedArr =
+                        req.userData.userRole !== "admin"
+                            ? consolidateStats(overallArr)
+                            : overallArr;
+                    const attendancesObj = consolidatedArr.reduce((o, it) => {
                         o[it.status] = it.percentage;
                         return o;
                     }, {});
@@ -1074,10 +1119,17 @@ const getAttendanceOverview = async (req, res, next) => {
                         );
 
                         const overallArr = getOverallStats(attendancesForSub);
-                        const attendancesObj = overallArr.reduce((o, it) => {
-                            o[it.status] = it.percentage;
-                            return o;
-                        }, {});
+                        const consolidatedArr =
+                            req.userData.userRole !== "admin"
+                                ? consolidateStats(overallArr)
+                                : overallArr;
+                        const attendancesObj = consolidatedArr.reduce(
+                            (o, it) => {
+                                o[it.status] = it.percentage;
+                                return o;
+                            },
+                            {}
+                        );
 
                         const uniqueDates = new Set(
                             attendancesForSub.map(
@@ -1115,13 +1167,19 @@ const getAttendanceOverview = async (req, res, next) => {
             `[getAttendanceOverview] Retrieved ${attendances.length} attendance records`
         );
 
+        const overallStats = getOverallStats(attendances);
+        const consolidatedOverallStats =
+            req.userData.userRole !== "admin"
+                ? consolidateStats(overallStats)
+                : overallStats;
+
         // Return the aggregated data
         return res.status(200).json({
             studentsData,
             studentsDataByClass,
             studentsDataByTeachingGroup,
             studentsDataBySubBranch,
-            overallStats: getOverallStats(attendances),
+            overallStats: consolidatedOverallStats,
             violationStats: getViolationStats(attendances),
         });
     } catch (error) {
