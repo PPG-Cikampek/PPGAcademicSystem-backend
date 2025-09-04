@@ -898,6 +898,16 @@ const getAttendanceOverview = async (req, res, next) => {
         //     studentAgg
         // );
 
+        // Consolidate Hadir and Terlambat for non-admin users
+        if (req.userData.userRole !== "admin") {
+            Object.values(studentAgg).forEach((student) => {
+                const hadirCount = student.attendances["Hadir"] || 0;
+                const terlambatCount = student.attendances["Terlambat"] || 0;
+                student.attendances["Hadir"] = hadirCount + terlambatCount;
+                delete student.attendances["Terlambat"];
+            });
+        }
+
         // Calculate percentages for each student's attendance statuses
         Object.values(studentAgg).forEach((student) => {
             const counts = student.attendances;
