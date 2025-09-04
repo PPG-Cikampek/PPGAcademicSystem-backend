@@ -9,8 +9,67 @@ const Student = require('../models/student')
 const Teacher = require('../models/teacher')
 const Attendance = require('../models/attendance');
 const SubBranch = require('../models/subBranch');
+const AcademicYear = require('../models/academicYear');
 
 
+
+const getAttendanceByAcademicYear = async (attendanceQuery) => {
+    const attendanceStats = await Attendance.aggregate([
+        { $match: attendanceQuery },
+        {
+            $lookup: {
+                from: 'branchyears',
+                localField: 'branchYearId',
+                foreignField: '_id',
+                as: 'branchYear'
+            }
+        },
+        { $unwind: '$branchYear' },
+        {
+            $lookup: {
+                from: 'academicyears',
+                localField: 'branchYear.academicYearId',
+                foreignField: '_id',
+                as: 'academicYear'
+            }
+        },
+        { $unwind: '$academicYear' },
+        {
+            $group: {
+                _id: {
+                    academicYearId: '$academicYear._id',
+                    academicYearName: '$academicYear.name'
+                },
+                totalAttendances: { $sum: 1 },
+                presentAttendances: {
+                    $sum: {
+                        $cond: [
+                            { $in: ['$status', ['Hadir', 'Terlambat']] },
+                            1,
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        {
+            $project: {
+                academicYearId: '$_id.academicYearId',
+                academicYearName: '$_id.academicYearName',
+                attendancePercentage: {
+                    $cond: [
+                        { $eq: ['$totalAttendances', 0] },
+                        0,
+                        { $multiply: [{ $divide: ['$presentAttendances', '$totalAttendances'] }, 100] }
+                    ]
+                }
+            }
+        },
+        { $sort: { academicYearName: 1 } }
+    ]);
+
+    return attendanceStats;
+};
 
 const getDashboardData = async (req, res, next) => {
     const userRole = req.userData.userRole
@@ -46,21 +105,14 @@ const getDashboardData = async (req, res, next) => {
             const students = await Student.find({ userId: { $in: studentUserIds } }).select('_id');
             const studentIds = students.map(s => s._id);
 
-            // Count attendance for students in this group
-            const attendanceCount = await Attendance.countDocuments({ studentId: { $in: studentIds } });
-
-            const attendancePresentCount = await Attendance.countDocuments({
-                studentId: { $in: studentIds },
-                status: { $in: ['Hadir', 'Terlambat'] }
-            });
-
-            const attendancePercentage = attendanceCount === 0 ? 0 : (attendancePresentCount / attendanceCount * 100);
+            // Get attendance statistics by academic year
+            const attendanceByYear = await getAttendanceByAcademicYear({ studentId: { $in: studentIds } });
 
             dashboardData = {
                 // "Kelas": classCount,
                 "Peserta Didik": studentCount,
                 "Tenaga Pendidik": teacherCount,
-                "Kehadiran": attendancePercentage
+                "Kehadiran": attendanceByYear
             }
 
             console.log(dashboardData)
@@ -86,19 +138,14 @@ const getDashboardData = async (req, res, next) => {
             const students = await Student.find({ userId: { $in: userIdsInBranch } }).select('_id');
             const studentIds = students.map(s => s._id);
 
-            // Attendance stats
-            const attendanceCount = await Attendance.countDocuments({ studentId: { $in: studentIds } });
-            const attendancePresentCount = await Attendance.countDocuments({
-                studentId: { $in: studentIds },
-                status: { $in: ['Hadir', 'Terlambat'] }
-            });
-            const attendancePercentage = attendanceCount === 0 ? 0 : (attendancePresentCount / attendanceCount * 100);
+            // Get attendance statistics by academic year
+            const attendanceByYear = await getAttendanceByAcademicYear({ studentId: { $in: studentIds } });
 
             dashboardData = {
                 "Kelompok": subBranchIds.length,
                 "Peserta Didik": studentCount,
                 "Tenaga Pendidik": teacherCount,
-                "Kehadiran": attendancePercentage
+                "Kehadiran": attendanceByYear
             }
         }
 
@@ -108,12 +155,9 @@ const getDashboardData = async (req, res, next) => {
             const classCount = await Class.countDocuments()
             const studentCount = await Student.countDocuments()
             const teacherCount = await Teacher.countDocuments()
-            const attendanceCount = await Attendance.countDocuments()
 
-            const attendancePresentCount = await Attendance.countDocuments({ status: { $in: ['Hadir', 'Terlambat'] } })
-
-            const attendancePercentage = attendancePresentCount / attendanceCount * 100
-
+            // Get attendance statistics by academic year for all students
+            const attendanceByYear = await getAttendanceByAcademicYear({});
 
             dashboardData = {
                 "Desa": branchCount,
@@ -121,7 +165,7 @@ const getDashboardData = async (req, res, next) => {
                 "Kelas": classCount,
                 "Peserta Didik": studentCount,
                 "Tenaga Pendidik": teacherCount,
-                "Kehadiran": attendancePercentage
+                "Kehadiran": attendanceByYear
             }
         }
 
