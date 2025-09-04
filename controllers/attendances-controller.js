@@ -367,16 +367,19 @@ const getAttendanceOverview = async (req, res, next) => {
     } = req.body;
 
     console.log(teacherClassIds);
-    if (
-        req.userData.userRole === "teacher" &&
-        (teacherClassIds === undefined || !teacherClassIds.length > 0)
-    ) {
-        return next(
-            new HttpError(
-                "Unauthorized access: No teaching classes found.",
-                403
-            )
-        );
+
+    if (req.userData.userRole === "teacher" && !classId) {
+        if (
+            req.userData.userRole === "teacher" &&
+            (teacherClassIds === undefined || !teacherClassIds.length > 0)
+        ) {
+            return next(
+                new HttpError(
+                    "Unauthorized access: No teaching classes found.",
+                    403
+                )
+            );
+        }
     }
 
     // Define empty response structure for cases with no data
