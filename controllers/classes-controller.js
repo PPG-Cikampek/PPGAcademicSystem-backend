@@ -875,7 +875,7 @@ const updateClassById = async (req, res, next) => {
     }
 
     res.status(200).json({
-        message: "Class updated successfully!",
+        message: "Berhasil memperbarui kelas!",
         class: identifiedClass.toObject({ getters: true }),
     });
 };
