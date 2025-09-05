@@ -96,10 +96,10 @@ const getClassById = async (req, res, next) => {
                         select: ["name", "branchYearId"],
                         populate: {
                             path: "branchYearId",
-                            select: ["isActive", "academicYearId"],
+                            select: ["name", "isActive", "academicYearId"],
                             populate: {
                                 path: "academicYearId",
-                                select: "isActive",
+                                select: ["name", "isActive"],
                             },
                         },
                     },
