@@ -352,7 +352,7 @@ const updateAttendancesByIds = async (req, res, next) => {
         }
         console.log("Updated attendances");
         res.status(200).json({
-            message: "Berhasil update kehadiran!",
+            message: "Berhasil memperbarui data kehadiran!",
             results,
         });
     } catch (error) {

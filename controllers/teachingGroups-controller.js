@@ -307,14 +307,14 @@ const deleteTeachingGroup = async (req, res, next) => {
         if (teachingGroup.subBranches && teachingGroup.subBranches.length > 0) {
             await session.abortTransaction();
             session.endSession();
-            return next(new HttpError("Terdapat Kelompok di KBM ini!", 400));
+            return next(new HttpError("Terdapat Kelompok yang terdaftar di KBM ini!", 400));
         }
 
         // Check if classes is not empty
         if (teachingGroup.classes && teachingGroup.classes.length > 0) {
             await session.abortTransaction();
             session.endSession();
-            return next(new HttpError("Terdapat Kelas di KBM ini!", 400));
+            return next(new HttpError("Terdapat Kelas yang terdaftar di KBM ini!", 400));
         }
 
         // Remove reference from BranchYear
