@@ -42,12 +42,6 @@ app.use((req, res, next) => {
 app.use(express.json()); // Parses incoming JSON requests
 app.use(express.urlencoded({ extended: true })); // Parses URL-encoded data
 
-// Serve static files for images
-app.use(
-    "/api/uploads/images",
-    express.static(path.join(__dirname, "uploads", "images"))
-);
-
 // Logging middleware to log every request
 app.use(logRequest); // Log every request
 
@@ -55,28 +49,36 @@ app.use(logRequest); // Log every request
 // - If the request origin is in the configured ALLOWED_ORIGINS list, send
 //   Access-Control-Allow-Origin with that exact origin and include credentials.
 // - Otherwise, fall back to allowing any origin ('*') but do not set credentials.
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || "https://akademik.ppgcikampek.id, http://localhost:3000")
-    .split(',')
-    .map(o => o.trim());
+const allowedOrigins = (
+    process.env.ALLOWED_ORIGINS ||
+    "https://akademik.ppgcikampek.id, http://localhost:3000"
+)
+    .split(",")
+    .map((o) => o.trim());
 
 const commonHeaders = {
-    allowedHeaders: "Origin, X-Requested-With, Content-Type, Accept, Authorization",
-    methods: "GET, POST, PATCH, DELETE, OPTIONS"
+    allowedHeaders:
+        "Origin, X-Requested-With, Content-Type, Accept, Authorization",
+    methods: "GET, POST, PATCH, DELETE, OPTIONS",
 };
 
 app.use((req, res, next) => {
     const origin = req.headers.origin;
     if (origin && allowedOrigins.includes(origin)) {
         // Use cors middleware for allowed, credentialed origins
-        return cors({ origin: origin, credentials: true, ...commonHeaders })(req, res, next);
+        return cors({ origin: origin, credentials: true, ...commonHeaders })(
+            req,
+            res,
+            next
+        );
     }
 
     // Fallback: allow any origin without credentials (similar to original code)
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', commonHeaders.allowedHeaders);
-    res.setHeader('Access-Control-Allow-Methods', commonHeaders.methods);
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Headers", commonHeaders.allowedHeaders);
+    res.setHeader("Access-Control-Allow-Methods", commonHeaders.methods);
 
-    if (req.method === 'OPTIONS') {
+    if (req.method === "OPTIONS") {
         return res.sendStatus(204);
     }
 
@@ -85,6 +87,12 @@ app.use((req, res, next) => {
 
 // Initialize backup scheduler
 require("./scheduler/backup-scheduler");
+
+// Serve static files for images
+app.use(
+    "/api/uploads/images",
+    express.static(path.join(__dirname, "uploads", "images"))
+);
 
 // Routes
 app.use("/api/users", usersRoutes);
