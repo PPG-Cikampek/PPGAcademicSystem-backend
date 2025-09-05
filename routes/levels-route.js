@@ -14,7 +14,7 @@ router.get(
     levelsController.getSubBranchesByBranchById
 );
 router.get(
-    "/branches/sub-branches/:teachingGroupId",
+    "/branches/sub-branches/:subBranchId",
     levelsController.getSubBranchById
 );
 
@@ -29,12 +29,12 @@ router.post("/branches/", levelsController.createBranch);
 router.post("/branches/sub-branches/", levelsController.createSubBranch);
 
 router.delete("/branches/", levelsController.deleteBranch);
-router.delete("/branches/sub-branches/", levelsController.deleteTeachingGroup);
+router.delete("/branches/sub-branches/", levelsController.deleteSubBranch);
 
 router.patch("/branches/:branchId", levelsController.updateBranch);
 router.patch(
-    "/branches/sub-branches/:teachingGroupId",
-    levelsController.updateTeachingGroup
+    "/branches/sub-branches/:subBranchId",
+    levelsController.updateSubBranch
 );
 
 // router.post('/signup', usersController.signup);
