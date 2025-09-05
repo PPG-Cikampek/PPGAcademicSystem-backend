@@ -6,6 +6,7 @@ const mongoose = require("mongoose");
 require("dotenv").config(); // Load environment variables
 
 const logRequest = require("./middlewares/log-request");
+const cors = require("cors");
 const usersRoutes = require("./routes/users-route");
 const levelsRoutes = require("./routes/levels-route");
 const teachingGroupsRoutes = require("./routes/teachingGroups-route");
@@ -50,30 +51,32 @@ app.use(
 // Logging middleware to log every request
 app.use(logRequest); // Log every request
 
-// CORS handling (support credentialed requests)
-app.use((req, res, next) => {
-    // Configure allowed origins via environment variable (comma-separated),
-    // or default to the production frontend and localhost for development.
-    const allowed = (process.env.ALLOWED_ORIGINS || "https://akademik.ppgcikampek.id, http://localhost:3000").split(",").map(o => o.trim());
-    const origin = req.headers.origin;
+// CORS handling using the `cors` package. We preserve the original behaviour:
+// - If the request origin is in the configured ALLOWED_ORIGINS list, send
+//   Access-Control-Allow-Origin with that exact origin and include credentials.
+// - Otherwise, fall back to allowing any origin ('*') but do not set credentials.
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || "https://akademik.ppgcikampek.id, http://localhost:3000")
+    .split(',')
+    .map(o => o.trim());
 
-    if (origin && allowed.includes(origin)) {
-        // When allowing credentialed requests, Access-Control-Allow-Origin must be the exact origin (not '*')
-        res.setHeader("Access-Control-Allow-Origin", origin);
-        res.setHeader("Access-Control-Allow-Credentials", "true");
-    } else {
-        // Fallback: allow any origin but without credentials header
-        res.setHeader("Access-Control-Allow-Origin", "*");
+const commonHeaders = {
+    allowedHeaders: "Origin, X-Requested-With, Content-Type, Accept, Authorization",
+    methods: "GET, POST, PATCH, DELETE, OPTIONS"
+};
+
+app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && allowedOrigins.includes(origin)) {
+        // Use cors middleware for allowed, credentialed origins
+        return cors({ origin: origin, credentials: true, ...commonHeaders })(req, res, next);
     }
 
-    res.setHeader(
-        "Access-Control-Allow-Headers",
-        "Origin, X-Requested-With, Content-Type, Accept, Authorization"
-    );
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
+    // Fallback: allow any origin without credentials (similar to original code)
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', commonHeaders.allowedHeaders);
+    res.setHeader('Access-Control-Allow-Methods', commonHeaders.methods);
 
-    // Short-circuit preflight requests
-    if (req.method === "OPTIONS") {
+    if (req.method === 'OPTIONS') {
         return res.sendStatus(204);
     }
 
