@@ -173,13 +173,28 @@ const getAttendancesByClass = async (req, res, next) => {
             .sort({ forDate: 1 });
 
         if (attendances.length === 0) {
-            return res
-                .status(404)
-                .json({ message: "Belum ada riwayat absensi!" });
+            return res.status(200).json({});
         }
 
         console.log(`Retrieved attendances for classId ${classId}`);
-        res.status(200).json(attendances);
+
+        // Group attendances by date
+        const groupedAttendances = {};
+        attendances.forEach(attendance => {
+            const date = new Date(attendance.forDate);
+            const formattedDate = new Intl.DateTimeFormat('id-ID', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric'
+            }).format(date);
+            if (!groupedAttendances[formattedDate]) {
+                groupedAttendances[formattedDate] = [];
+            }
+            groupedAttendances[formattedDate].push(attendance);
+        });
+
+        res.status(200).json(groupedAttendances);
     } catch (error) {
         console.error("Error retrieving attendances:", error);
         return next(new HttpError("Internal server error occured!", 500));
