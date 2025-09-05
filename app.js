@@ -50,14 +50,32 @@ app.use(
 // Logging middleware to log every request
 app.use(logRequest); // Log every request
 
-// CORS handling
+// CORS handling (support credentialed requests)
 app.use((req, res, next) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
+    // Configure allowed origins via environment variable (comma-separated),
+    // or default to the production frontend and localhost for development.
+    const allowed = (process.env.ALLOWED_ORIGINS || "https://akademik.ppgcikampek.id, http://localhost:3000").split(",").map(o => o.trim());
+    const origin = req.headers.origin;
+
+    if (origin && allowed.includes(origin)) {
+        // When allowing credentialed requests, Access-Control-Allow-Origin must be the exact origin (not '*')
+        res.setHeader("Access-Control-Allow-Origin", origin);
+        res.setHeader("Access-Control-Allow-Credentials", "true");
+    } else {
+        // Fallback: allow any origin but without credentials header
+        res.setHeader("Access-Control-Allow-Origin", "*");
+    }
+
     res.setHeader(
         "Access-Control-Allow-Headers",
         "Origin, X-Requested-With, Content-Type, Accept, Authorization"
     );
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
+
+    // Short-circuit preflight requests
+    if (req.method === "OPTIONS") {
+        return res.sendStatus(204);
+    }
 
     next();
 });
