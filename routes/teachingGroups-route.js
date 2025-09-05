@@ -30,4 +30,6 @@ router.delete(
     teachingGroupController.removeClassFromTeachingGroup
 );
 
+router.patch("/:teachingGroupId", teachingGroupController.updateTeachingGroup);
+
 module.exports = router;

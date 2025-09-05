@@ -468,6 +468,36 @@ const removeClassFromTeachingGroup = async (req, res, next) => {
     });
 };
 
+const updateTeachingGroup = async (req, res, next) => {
+    const teachingGroupId = req.params.teachingGroupId;
+    const { name, address } = req.body;
+    let identifiedTeachingGroup;
+    try {
+        identifiedTeachingGroup = await TeachingGroup.findById(teachingGroupId);
+        if (!identifiedTeachingGroup) {
+            return next(new HttpError("KBM tidak ditemukan!", 404));
+        }
+    } catch (err) {
+        console.log(err);
+        return next(new HttpError("Internal server error!", 500));
+    }
+
+    identifiedTeachingGroup.name = name;
+    identifiedTeachingGroup.address = address;
+
+    try {
+        await identifiedTeachingGroup.save();
+    } catch (err) {
+        console.log(err);
+        return next(new HttpError("Gagal memperbarui KBM!", 500));
+    }
+
+    res.status(200).json({
+        message: `Berhasil memperbarui KBM!`,
+        teachingGroup: identifiedTeachingGroup,
+    });
+};
+
 exports.getTeachingGroups = getTeachingGroups;
 exports.getTeachingGroupById = getTeachingGroupById;
 exports.getClassesByTeachingGroupId = getClassesByTeachingGroupId;
@@ -478,3 +508,4 @@ exports.unlockTeachingGroupById = unlockTeachingGroupById;
 exports.deleteTeachingGroup = deleteTeachingGroup;
 exports.removeSubBranchFromTeachingGroup = removeSubBranchFromTeachingGroup;
 exports.removeClassFromTeachingGroup = removeClassFromTeachingGroup;
+exports.updateTeachingGroup = updateTeachingGroup;
