@@ -27,7 +27,9 @@ router.post('/reset-password', usersController.resetPassword);
 
 
 router.post('/createUser', checkAuth, usersController.createUser);
-router.post('/requestAccounts', checkAuth, usersController.requestAccounts);
+// Allow multiple profile images (one per requested account) via field name 'images'
+router.post('/requestAccounts', checkAuth, fileUpload.array('images', 50), usersController.requestAccounts);
+router.post('/account-requests/approve-all', checkAuth, usersController.approveAndCreateAllPendingTickets);
 
 router.post('/bulk-create', checkAuth, usersController.bulkCreateUsersAndStudents);
 router.post('/image-upload/:userId', fileUpload.single('image'), usersController.updateProfileImage);

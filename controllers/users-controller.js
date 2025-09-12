@@ -128,7 +128,7 @@ const getRequestedAccountsByTicketId = async (req, res, next) => {
 };
 
 const patchRequestedAccountsByTicketId = async (req, res, next) => {
-    const { ticketId, respond } = req.body;
+    const { ticketId, respond, reason } = req.body;
 
     console.log(req.body);
     console.log("TICKET ID IS " + ticketId);
@@ -151,6 +151,9 @@ const patchRequestedAccountsByTicketId = async (req, res, next) => {
     }
 
     identifiedTicket.status = respond;
+    if (respond === "rejected" && reason) {
+        identifiedTicket.reason = reason;
+    }
 
     try {
         await identifiedTicket.save();
@@ -314,7 +317,7 @@ const bulkCreateUsersAndStudents = async (req, res, next) => {
         const nisNum = availableNis[i];
         const nis = `${currentYear}${nisNum.toString().padStart(4, "0")}`; // e.g., 20240010
 
-        const userEmail = `siswa${nis}@gmail.com`; // Unique email for each student
+        const userEmail = `siswa${nis}@ppgcikampek.id`; // Unique email for each student
 
         let hashedPassword;
         try {
@@ -376,10 +379,47 @@ const bulkCreateUsersAndStudents = async (req, res, next) => {
 };
 
 const requestAccounts = async (req, res, next) => {
-    const { subBranchId, accountList } = req.body;
+    /**
+     * Expectation (multipart/form-data):
+     *  - subBranchId: string
+     *  - accountList: JSON.stringify([...]) where each element has at minimum { name, accountRole, (email for teacher) , dateOfBirth? }
+     *  - images: uploaded files (one per account in same order as accountList) field name 'images'
+     */
+    let { subBranchId, accountList } = req.body;
     const createdTime = new Date();
 
-    console.log(accountList);
+    try {
+        if (typeof accountList === "string") {
+            accountList = JSON.parse(accountList);
+        }
+    } catch (err) {
+        return next(new HttpError("Format accountList tidak valid!", 400));
+    }
+
+    if (!Array.isArray(accountList) || accountList.length === 0) {
+        return next(new HttpError("Daftar akun tidak boleh kosong!", 400));
+    }
+
+    // Attach image paths & thumbnails (if any) to corresponding account entries
+    const files = req.files || [];
+    if (files.length > 0) {
+        for (let i = 0; i < accountList.length; i++) {
+            const file = files[i];
+            if (file) {
+                const normalizedPath = file.path.replace(/\\/g, "/");
+                accountList[i].image = normalizedPath;
+                try {
+                    const thumb = await generateThumbnailBase64(file.path);
+                    accountList[i].thumbnail = thumb;
+                } catch (thumbnailError) {
+                    console.error(
+                        "Failed to generate thumbnail for account request image",
+                        thumbnailError
+                    );
+                }
+            }
+        }
+    }
 
     const ticketId = uuidv1(); // Generate ticketId once
 
@@ -394,7 +434,10 @@ const requestAccounts = async (req, res, next) => {
 
     try {
         await createRequest.save();
-        res.status(201).json({ message: "Berhasil membuat permintaan!" });
+        res.status(201).json({
+            message: "Berhasil membuat permintaan!",
+            ticketId,
+        });
     } catch (err) {
         console.error(err);
         return next(new HttpError("Gagal membuat permintaan!", 500));
@@ -1007,3 +1050,240 @@ exports.requestAccounts = requestAccounts;
 exports.getRequestedAccountsByUserId = getRequestedAccountsByUserId;
 exports.getRequestedAccountsByTicketId = getRequestedAccountsByTicketId;
 exports.patchRequestedAccountsByTicketId = patchRequestedAccountsByTicketId;
+/**
+ * Approve and create all pending account request tickets.
+ * - Creates User + Student for student accounts (auto-generate NIS + email)
+ * - Creates User + Teacher for teacher accounts (auto-generate NIG)
+ * - Sets each processed ticket's status to 'approved' on success
+ */
+const approveAndCreateAllPendingTickets = async (req, res, next) => {
+    // Only admin is allowed to approve and create in bulk
+    if (!req.userData || req.userData.userRole !== "admin") {
+        return next(new HttpError("Unauthorized", 401));
+    }
+
+    // Find all pending tickets
+    let pendingTickets;
+    try {
+        pendingTickets = await AccountRequest.find({ status: "pending" });
+    } catch (err) {
+        console.error(err);
+        return next(new HttpError("Gagal mengambil daftar tiket!", 500));
+    }
+
+    if (!pendingTickets || pendingTickets.length === 0) {
+        return res.status(200).json({
+            message: "Tidak ada tiket pending untuk diproses.",
+            processedTickets: 0,
+            createdUsers: 0,
+        });
+    }
+
+    // Collect number of student accounts to allocate NIS
+    const allStudentAccounts = [];
+    const ticketAccounts = []; // Keep mapping per ticket
+    for (const t of pendingTickets) {
+        const students = [];
+        const teachers = [];
+        (t.accountList || []).forEach((acc) => {
+            if (acc.accountRole === "student") students.push(acc);
+            else if (acc.accountRole === "teacher") teachers.push(acc);
+        });
+        ticketAccounts.push({ ticket: t, students, teachers });
+        allStudentAccounts.push(...students);
+    }
+
+    // Prepare NIS allocation for all students across tickets
+    const currentYear = new Date().getFullYear();
+    const nisNeeded = allStudentAccounts.length;
+    let availableNis = [];
+    if (nisNeeded > 0) {
+        try {
+            const students = await Student.find(
+                { nis: new RegExp(`^${currentYear}(\\d{4})$`) },
+                { nis: 1, _id: 0 }
+            );
+            const usedNumbers = students
+                .map((s) => parseInt(s.nis.slice(4)))
+                .filter((n) => n >= 10 && n <= 9999)
+                .sort((a, b) => a - b);
+
+            // Find available slots 0010-9999
+            let expected = 10;
+            let idx = 0;
+            while (availableNis.length < nisNeeded && expected <= 9999) {
+                if (idx < usedNumbers.length && usedNumbers[idx] === expected) {
+                    idx++;
+                    expected++;
+                    continue;
+                }
+                availableNis.push(
+                    `${currentYear}${expected.toString().padStart(4, "0")}`
+                );
+                expected++;
+            }
+        } catch (err) {
+            console.error(err);
+            return next(new HttpError("Gagal menyiapkan NIS!", 500));
+        }
+
+        if (availableNis.length < nisNeeded) {
+            return next(
+                new HttpError(
+                    "Tidak cukup slot NIS tersedia dalam rentang 0010-9999 untuk tahun ini.",
+                    400
+                )
+            );
+        }
+    }
+
+    // Iterator for NIS
+    let nisIndex = 0;
+    let totalCreatedUsers = 0;
+    let processedTickets = 0;
+    // Initialize teacher counter based on existing Teacher documents
+    let teacherCount = 0;
+    try {
+        teacherCount = await Teacher.countDocuments();
+    } catch (err) {
+        console.error('Failed to count existing teachers, defaulting to 0', err);
+        teacherCount = 0;
+    }
+
+    // Process each ticket in its own transaction for consistency
+    for (const { ticket, students, teachers } of ticketAccounts) {
+        const session = await mongoose.startSession();
+        session.startTransaction();
+        try {
+            // Create students
+            for (const acc of students) {
+                const nis = availableNis[nisIndex++];
+
+                // Create User
+                const hashedPassword = await bcrypt.hash("1234", 12);
+                const user = new User({
+                    name: acc.name,
+                    email: `siswa${nis}@ppgcikampek.id`,
+                    password: hashedPassword,
+                    role: "student",
+                    image: acc.image || "",
+                    thumbnail: acc.thumbnail || "",
+                    subBranchId: ticket.subBranchId,
+                });
+                await user.save({ session });
+
+                // Create Student
+                const student = new Student({
+                    userId: user._id,
+                    nis,
+                    name: acc.name,
+                    dateOfBirth: acc.dateOfBirth || "",
+                    gender: acc.gender || "",
+                    parentName: acc.parentName || "",
+                    parentPhone: acc.parentPhone || "",
+                    address: acc.address || "",
+                    image: acc.image || "",
+                    thumbnail: acc.thumbnail || "",
+                    isProfileComplete: false,
+                    isInternal: true,
+                    attendanceIds: [],
+                    classIds: [],
+                });
+                await student.save({ session });
+
+                totalCreatedUsers++;
+            }
+
+            // Create teachers
+            for (const acc of teachers) {
+                // Basic email uniqueness check
+                const existing = await User.findOne(
+                    { email: acc.email },
+                    { _id: 1 }
+                ).session(session);
+                if (existing) {
+                    throw new HttpError(
+                        `Email sudah digunakan: ${acc.email}`,
+                        422
+                    );
+                }
+
+                const hashedPassword = await bcrypt.hash("1234", 12);
+                const user = new User({
+                    name: acc.name,
+                    email: acc.email,
+                    password: hashedPassword,
+                    role: "teacher",
+                    image: acc.image || "",
+                    thumbnail: acc.thumbnail || "",
+                    subBranchId: ticket.subBranchId,
+                });
+                await user.save({ session });
+
+                // Generate a unique NIG: YYMMDD (from provided dateOfBirth or today) + 4-digit sequential number
+                // Ensure teacherCount is incremented per created teacher to produce unique sequential suffix
+                let dob = null;
+                if (acc.dateOfBirth) {
+                    // try to parse provided dateOfBirth
+                    const parsed = new Date(acc.dateOfBirth);
+                    if (!isNaN(parsed.getTime())) {
+                        dob = parsed;
+                    }
+                }
+                const baseDate = dob || new Date();
+                const yy = baseDate.getFullYear().toString().slice(-2);
+                const mm = String(baseDate.getMonth() + 1).padStart(2, '0');
+                const dd = String(baseDate.getDate()).padStart(2, '0');
+
+                teacherCount += 1; // increment global teacher counter
+                const seq = String(teacherCount).padStart(4, '0');
+                const nig = `${yy}${mm}${dd}${seq}`;
+
+                const teacher = new Teacher({
+                    userId: user._id,
+                    name: acc.name,
+                    nig,
+                    phone: acc.phone || "",
+                    position: acc.position || "",
+                    dateOfBirth: acc.dateOfBirth || "",
+                    gender: acc.gender || "",
+                    address: acc.address || "",
+                    image: acc.image || "",
+                    thumbnail: acc.thumbnail || "",
+                    positionStartDate: new Date(),
+                    positionEndDate: "",
+                    isProfileComplete: true,
+                    classIds: [],
+                });
+                await teacher.save({ session });
+
+                totalCreatedUsers++;
+            }
+
+            // Mark ticket as approved
+            ticket.status = "approved";
+            await ticket.save({ session });
+
+            await session.commitTransaction();
+            processedTickets++;
+        } catch (err) {
+            await session.abortTransaction();
+            session.endSession();
+            console.error("Failed processing ticket", ticket.ticketId, err);
+            return next(
+                err instanceof HttpError
+                    ? err
+                    : new HttpError("Gagal memproses tiket!", 500)
+            );
+        }
+        session.endSession();
+    }
+
+    return res.status(200).json({
+        message: `Berhasil memproses ${processedTickets} tiket dan membuat ${totalCreatedUsers} akun!`,
+        processedTickets,
+        createdUsers: totalCreatedUsers,
+    });
+};
+
+exports.approveAndCreateAllPendingTickets = approveAndCreateAllPendingTickets;

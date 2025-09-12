@@ -9,7 +9,8 @@ const accountRequestSchema = new Schema({
     ticketId: { type: String, required: true },
     createdTime: { type: Date, required: true },
     status: { type: String, required: true },
-    accountList: { type: Array, required: true }
+    accountList: { type: Array, required: true },
+    reason: { type: String, default: '' }
 });
 
 
