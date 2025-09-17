@@ -768,9 +768,13 @@ const requestResetPassword = async (req, res, next) => {
     const mailOptions = {
         from: process.env.SERVER_EMAIL,
         to: user.email,
-        subject: "Reset Kata Sandi Sistem E-Presensi",
+        subject: "Reset Kata Sandi Sistem Akademik Digital PPG Cikampek",
         html: `<p>Anda meminta untuk mereset password</p>
-               <p>Klik Tautan Berikut <a href="http://localhost:3000/reset-password/${token}">link</a> untuk mereset password.</p>`,
+               <p>Klik Tautan Berikut <a href="${
+                   process.env.FRONTEND_URL || process.env.BASE_URL
+               }/reset-password/${token}">link</a> untuk mereset password.</p>
+               <br>
+               <p>Link di atas berlaku selama 1 jam.</p>`,
     };
 
     transporter.sendMail(mailOptions, (error, info) => {
@@ -871,8 +875,8 @@ const requestVerifyEmail = async (req, res, next) => {
         mailOptions = {
             from: process.env.SERVER_EMAIL,
             to: newEmail,
-            subject: "Pengubahan Email Sistem Akademik PPG",
-            html: `<p>Anda meminta mengubah Email Sistem Akademik PPG</p>
+            subject: "Pengubahan Email Sistem Akademik Digital PPG Cikampek",
+            html: `<p>Anda meminta mengubah Email Sistem Akademik Digital PPG Cikampek</p>
                    <p>Klik Tautan Berikut <a href="${process.env.BASE_URL}/verify-email/${token}">link</a> untuk memverifikasi email baru Anda.</p>
                    <br>
                    <p>Link di atas berlaku selama 1 jam.</p> `,
@@ -886,8 +890,8 @@ const requestVerifyEmail = async (req, res, next) => {
         mailOptions = {
             from: process.env.SERVER_EMAIL,
             to: user.email,
-            subject: "Verifikasi Email Sistem Akademik PPG",
-            html: `<p>Verifikasi Email Sistem Akademik PPG</p>
+            subject: "Verifikasi Email Sistem Akademik Digital PPG Cikampek",
+            html: `<p>Verifikasi Email Sistem Akademik Digital PPG Cikampek</p>
                    <p>Klik Tautan Berikut <a href="${process.env.BASE_URL}/verify-email/${token}">link</a> untuk memverifikasi email Anda.</p>
                    <br>
                    <p>Link di atas berlaku selama 1 jam.</p> `,
@@ -1146,7 +1150,10 @@ const approveAndCreateAllPendingTickets = async (req, res, next) => {
     try {
         teacherCount = await Teacher.countDocuments();
     } catch (err) {
-        console.error('Failed to count existing teachers, defaulting to 0', err);
+        console.error(
+            "Failed to count existing teachers, defaulting to 0",
+            err
+        );
         teacherCount = 0;
     }
 
@@ -1232,11 +1239,11 @@ const approveAndCreateAllPendingTickets = async (req, res, next) => {
                 }
                 const baseDate = dob || new Date();
                 const yy = baseDate.getFullYear().toString().slice(-2);
-                const mm = String(baseDate.getMonth() + 1).padStart(2, '0');
-                const dd = String(baseDate.getDate()).padStart(2, '0');
+                const mm = String(baseDate.getMonth() + 1).padStart(2, "0");
+                const dd = String(baseDate.getDate()).padStart(2, "0");
 
                 teacherCount += 1; // increment global teacher counter
-                const seq = String(teacherCount).padStart(4, '0');
+                const seq = String(teacherCount).padStart(4, "0");
                 const nig = `${yy}${mm}${dd}${seq}`;
 
                 const teacher = new Teacher({
