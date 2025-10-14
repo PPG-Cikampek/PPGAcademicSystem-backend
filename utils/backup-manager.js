@@ -75,7 +75,7 @@ class BackupManager {
                 const stats = fs.statSync(filePath);
                 const daysOld = (now - stats.mtime) / (1000 * 60 * 60 * 24);
 
-                if (daysOld > 30) {
+                if (daysOld > 7) {
                     fs.unlinkSync(filePath);
                     console.log(`Deleted old backup: ${file}`);
                 }
