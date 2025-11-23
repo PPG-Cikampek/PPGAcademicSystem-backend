@@ -24,7 +24,10 @@ const getClassesInfo = async (req, res, next) => {
             { grade: '3', label: 'Kelas 3' },
             { grade: '4', label: 'Kelas 4' },
             { grade: '5', label: 'Kelas 5' },
-            { grade: '6', label: 'Kelas 6' }
+            { grade: '6', label: 'Kelas 6' },
+            { grade: '7', label: 'Kelas 7' },
+            { grade: '8', label: 'Kelas 8' },
+            { grade: '9', label: 'Kelas 9' }
         ];
 
         const formattedResult = grades.map(gradeInfo => ({
