@@ -150,10 +150,221 @@ const patchRequestedAccountsByTicketId = async (req, res, next) => {
         );
     }
 
-    identifiedTicket.status = respond;
-    if (respond === "rejected" && reason) {
-        identifiedTicket.reason = reason;
+    // If rejecting, just update status and reason
+    if (respond === "rejected") {
+        identifiedTicket.status = respond;
+        if (reason) {
+            identifiedTicket.reason = reason;
+        }
+        try {
+            await identifiedTicket.save();
+            return res.json({
+                message: "Berhasil Mengupdate Tiket!",
+                ticket: identifiedTicket.toObject({ getters: true }),
+            });
+        } catch (err) {
+            console.error(err);
+            return next(new HttpError("Gagal Mengupdate Tiket!", 500));
+        }
     }
+
+    // If approving, create corresponding user and student/teacher records
+    if (respond === "approved") {
+        // Separate accounts by role
+        const students = [];
+        const teachers = [];
+        (identifiedTicket.accountList || []).forEach((acc) => {
+            if (acc.accountRole === "student") students.push(acc);
+            else if (acc.accountRole === "teacher") teachers.push(acc);
+        });
+
+        // Prepare NIS allocation for students
+        const currentYear = new Date().getFullYear();
+        const nisNeeded = students.length;
+        let availableNis = [];
+
+        if (nisNeeded > 0) {
+            try {
+                const existingStudents = await Student.find(
+                    { nis: new RegExp(`^${currentYear}(\\d{4})$`) },
+                    { nis: 1, _id: 0 }
+                );
+                const usedNumbers = existingStudents
+                    .map((s) => parseInt(s.nis.slice(4)))
+                    .filter((n) => n >= 10 && n <= 9999)
+                    .sort((a, b) => a - b);
+
+                // Find available slots 0010-9999
+                let expected = 10;
+                let idx = 0;
+                while (availableNis.length < nisNeeded && expected <= 9999) {
+                    if (idx < usedNumbers.length && usedNumbers[idx] === expected) {
+                        idx++;
+                        expected++;
+                        continue;
+                    }
+                    availableNis.push(
+                        `${currentYear}${expected.toString().padStart(4, "0")}`
+                    );
+                    expected++;
+                }
+            } catch (err) {
+                console.error(err);
+                return next(new HttpError("Gagal menyiapkan NIS!", 500));
+            }
+
+            if (availableNis.length < nisNeeded) {
+                return next(
+                    new HttpError(
+                        "Tidak cukup slot NIS tersedia dalam rentang 0010-9999 untuk tahun ini.",
+                        400
+                    )
+                );
+            }
+        }
+
+        // Initialize teacher counter based on existing Teacher documents
+        let teacherCount = 0;
+        try {
+            teacherCount = await Teacher.countDocuments();
+        } catch (err) {
+            console.error("Failed to count existing teachers, defaulting to 0", err);
+            teacherCount = 0;
+        }
+
+        let nisIndex = 0;
+        let totalCreatedUsers = 0;
+
+        const session = await mongoose.startSession();
+        session.startTransaction();
+
+        try {
+            // Create students
+            for (const acc of students) {
+                const nis = availableNis[nisIndex++];
+
+                // Create User
+                const hashedPassword = await bcrypt.hash("1234", 12);
+                const user = new User({
+                    name: acc.name,
+                    email: `siswa${nis}@ppgcikampek.id`,
+                    password: hashedPassword,
+                    role: "student",
+                    image: acc.image || "",
+                    thumbnail: acc.thumbnail || "",
+                    subBranchId: identifiedTicket.subBranchId,
+                });
+                await user.save({ session });
+
+                // Create Student
+                const student = new Student({
+                    userId: user._id,
+                    nis,
+                    name: acc.name,
+                    dateOfBirth: acc.dateOfBirth || "",
+                    gender: acc.gender || "",
+                    parentName: acc.parentName || "",
+                    parentPhone: acc.parentPhone || "",
+                    address: acc.address || "",
+                    image: acc.image || "",
+                    thumbnail: acc.thumbnail || "",
+                    isProfileComplete: false,
+                    isInternal: true,
+                    attendanceIds: [],
+                    classIds: [],
+                });
+                await student.save({ session });
+
+                totalCreatedUsers++;
+            }
+
+            // Create teachers
+            for (const acc of teachers) {
+                // Basic email uniqueness check
+                const existing = await User.findOne(
+                    { email: acc.email },
+                    { _id: 1 }
+                ).session(session);
+                if (existing) {
+                    throw new HttpError(`Email sudah digunakan: ${acc.email}`, 422);
+                }
+
+                const hashedPassword = await bcrypt.hash("1234", 12);
+                const user = new User({
+                    name: acc.name,
+                    email: acc.email,
+                    password: hashedPassword,
+                    role: "teacher",
+                    image: acc.image || "",
+                    thumbnail: acc.thumbnail || "",
+                    subBranchId: identifiedTicket.subBranchId,
+                });
+                await user.save({ session });
+
+                // Generate a unique NIG: YYMMDD (from provided dateOfBirth or today) + 4-digit sequential number
+                let dob = null;
+                if (acc.dateOfBirth) {
+                    const parsed = new Date(acc.dateOfBirth);
+                    if (!isNaN(parsed.getTime())) {
+                        dob = parsed;
+                    }
+                }
+                const baseDate = dob || new Date();
+                const yy = baseDate.getFullYear().toString().slice(-2);
+                const mm = String(baseDate.getMonth() + 1).padStart(2, "0");
+                const dd = String(baseDate.getDate()).padStart(2, "0");
+
+                teacherCount += 1;
+                const seq = String(teacherCount).padStart(4, "0");
+                const nig = `${yy}${mm}${dd}${seq}`;
+
+                const teacher = new Teacher({
+                    userId: user._id,
+                    name: acc.name,
+                    nig,
+                    phone: acc.phone || "",
+                    position: acc.position || "",
+                    dateOfBirth: acc.dateOfBirth || "",
+                    gender: acc.gender || "",
+                    address: acc.address || "",
+                    image: acc.image || "",
+                    thumbnail: acc.thumbnail || "",
+                    positionStartDate: new Date(),
+                    positionEndDate: "",
+                    isProfileComplete: true,
+                    classIds: [],
+                });
+                await teacher.save({ session });
+
+                totalCreatedUsers++;
+            }
+
+            // Mark ticket as approved
+            identifiedTicket.status = "approved";
+            await identifiedTicket.save({ session });
+
+            await session.commitTransaction();
+            session.endSession();
+
+            return res.json({
+                message: `Berhasil menyetujui tiket dan membuat ${totalCreatedUsers} akun!`,
+                ticket: identifiedTicket.toObject({ getters: true }),
+                createdUsers: totalCreatedUsers,
+            });
+        } catch (err) {
+            await session.abortTransaction();
+            session.endSession();
+            console.error("Failed processing ticket", ticketId, err);
+            return next(
+                err instanceof HttpError
+                    ? err
+                    : new HttpError("Gagal memproses tiket!", 500)
+            );
+        }
+    }
+
+    // For other status updates (not approved or rejected)
+    identifiedTicket.status = respond;
 
     try {
         await identifiedTicket.save();
