@@ -11,26 +11,38 @@ const TeachingGroup = require("../models/teachingGroup");
 const Score = require("../models/score");
 
 const getBranchYears = async (req, res, next) => {
-    const { populate } = req.query;
+    const { populate, academicYearId, activeOnly } = req.query;
+
+    // Build filter to support admin listing (all branches) and branch-admin usage
+    const filter = {};
+    if (academicYearId) {
+        filter.academicYearId = academicYearId;
+    }
+    if (activeOnly === "true") {
+        filter.isActive = true;
+    }
 
     let branchYears;
 
     try {
         if (populate === "semesters") {
-            branchYears = await BranchYear.find().populate("semesters");
+            branchYears = await BranchYear.find(filter).populate("semesters");
         } else if (populate === "branchId") {
-            branchYears = await BranchYear.find()
+            branchYears = await BranchYear.find(filter)
                 .populate({ path: "branchId", select: "name" })
-                .populate({ path: "academicYearId", select: "name" });
+                .populate({
+                    path: "academicYearId",
+                    select: ["name", "isActive", "munaqasyahStatus"],
+                });
 
-            // Sort after population
+            // Sort after population by academic year name desc to keep past years accessible
             branchYears = branchYears.sort((a, b) => {
                 const nameA = a.academicYearId?.name || "";
                 const nameB = b.academicYearId?.name || "";
-                return nameB.localeCompare(nameA); // Descending order
+                return nameB.localeCompare(nameA);
             });
         } else {
-            branchYears = await BranchYear.find();
+            branchYears = await BranchYear.find(filter);
         }
     } catch (err) {
         console.error(err);

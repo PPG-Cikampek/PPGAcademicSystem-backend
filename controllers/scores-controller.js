@@ -218,7 +218,7 @@ const getSubBranchSummaryByBranch = async (req, res, next) => {
                         {
                             $match: {
                                 $expr: { $eq: ['$subBranchId', '$$subBranchId'] },
-                                role: 'munaqisy'
+                                role: { $in: ['teacher', 'munaqisy'] }
                             }
                         },
                         { $count: 'count' }
