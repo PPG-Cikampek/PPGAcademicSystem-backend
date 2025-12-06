@@ -17,31 +17,121 @@ const Teacher = require("../models/teacher");
 const AccountRequest = require("../models/accountRequest");
 
 const getUsers = async (req, res, next) => {
-    const { role } = req.query;
+    const {
+        role,
+        page = 1,
+        limit = 10,
+        search,
+        sortBy = "name",
+        sortDir = "asc",
+    } = req.query;
 
-    let identifiedUsers;
+    const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
+    const pageSize = Math.max(parseInt(limit, 10) || 10, 1); // no upper cap per requirement
+
+    const matchStage = {};
+    if (role) {
+        matchStage.role = role;
+    }
+
+    const searchRegex = search ? new RegExp(search, "i") : null;
+    if (searchRegex) {
+        matchStage.$or = [
+            { name: { $regex: searchRegex } },
+            { email: { $regex: searchRegex } },
+        ];
+    }
+
+    const sortFieldMap = {
+        name: "name",
+        email: "email",
+        branch: "branchName",
+        group: "groupName",
+        isEmailVerified: "isEmailVerified",
+        role: "role",
+    };
+    const resolvedSortField = sortFieldMap[sortBy] || "name";
+    const resolvedSortDir = sortDir === "desc" ? -1 : 1;
+
+    const basePipeline = [
+        { $match: matchStage },
+        {
+            $lookup: {
+                from: "subbranches",
+                localField: "subBranchId",
+                foreignField: "_id",
+                as: "subBranch",
+            },
+        },
+        { $unwind: { path: "$subBranch", preserveNullAndEmptyArrays: true } },
+        {
+            $lookup: {
+                from: "branches",
+                localField: "subBranch.branchId",
+                foreignField: "_id",
+                as: "branch",
+            },
+        },
+        { $unwind: { path: "$branch", preserveNullAndEmptyArrays: true } },
+        {
+            $addFields: {
+                branchName: "$branch.name",
+                groupName: "$subBranch.name",
+                subBranchId: {
+                    $cond: [
+                        { $ifNull: ["$subBranch", false] },
+                        {
+                            $mergeObjects: [
+                                "$subBranch",
+                                { branchId: "$branch" },
+                            ],
+                        },
+                        "$subBranchId",
+                    ],
+                },
+            },
+        },
+    ];
+
+    const dataPipeline = [
+        ...basePipeline,
+        { $sort: { [resolvedSortField]: resolvedSortDir, _id: 1 } },
+        { $skip: (pageNumber - 1) * pageSize },
+        { $limit: pageSize },
+        {
+            $project: {
+                password: 0,
+            },
+        },
+    ];
+
     try {
-        if (role === "student") {
-            identifiedUsers = await User.find({ role }, "-password").populate({
-                path: "subBranchId",
-                select: "name",
-                populate: { path: "branchId", select: "name" },
-            });
-        } else {
-            identifiedUsers = await User.find({}, "-password").populate({
-                path: "subBranchId",
-                select: "name",
-                populate: { path: "branchId", select: "name" },
-            });
-        }
+        const [data, countResult] = await Promise.all([
+            User.aggregate(dataPipeline),
+            User.aggregate([...basePipeline, { $count: "total" }]),
+        ]);
+
+        const total = countResult[0]?.total || 0;
+        const totalPages = Math.ceil(total / pageSize) || 1;
+
+        const users = data.map((doc) => ({
+            ...doc,
+            id: doc._id, // keep getters-like id field
+        }));
+
+        return res.json({
+            users,
+            page: pageNumber,
+            limit: pageSize,
+            total,
+            totalPages,
+            hasNext: pageNumber < totalPages,
+            hasPrev: pageNumber > 1,
+        });
     } catch (err) {
         console.log(err);
         return next(new HttpError("Internal server error occured!", 500));
     }
-    console.log("Get users requested");
-    res.json({
-        users: identifiedUsers.map((x) => x.toObject({ getters: true })),
-    });
 };
 
 const getUsersById = async (req, res, next) => {
@@ -67,34 +157,128 @@ const getUsersById = async (req, res, next) => {
     res.json({ users: identifiedUsers.toObject({ getters: true }) });
 };
 
+// Build aggregation with pagination/filter/search for account requests
 const getRequestedAccountsByUserId = async (req, res, next) => {
     const userId = req.params.userId;
+    const {
+        page = 1,
+        limit = 10,
+        search,
+        status,
+        subBranchId,
+        startDate,
+        endDate,
+        sortBy = "createdTime",
+        sortDir = "desc",
+    } = req.query;
 
-    let identifiedTickets;
+    const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
+    const pageSize = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 100);
+
+    const matchStage = {};
+    if (userId) matchStage.userId = userId;
+    if (status) matchStage.status = status;
+    if (subBranchId) matchStage.subBranchId = subBranchId;
+    if (startDate || endDate) {
+        matchStage.createdTime = {};
+        if (startDate) matchStage.createdTime.$gte = new Date(startDate);
+        if (endDate) matchStage.createdTime.$lte = new Date(endDate);
+    }
+
+    const allowedSortFields = {
+        createdTime: "createdTime",
+        ticketId: "ticketId",
+        status: "status",
+        userName: "user.name",
+    };
+    const sortField = allowedSortFields[sortBy] || "createdTime";
+    const sortOrder = sortDir === "asc" ? 1 : -1;
+
+    const basePipeline = [
+        { $match: matchStage },
+        {
+            $lookup: {
+                from: "users",
+                localField: "userId",
+                foreignField: "_id",
+                as: "user",
+            },
+        },
+        { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
+        {
+            $lookup: {
+                from: "subbranches",
+                localField: "subBranchId",
+                foreignField: "_id",
+                as: "subBranch",
+            },
+        },
+        { $unwind: { path: "$subBranch", preserveNullAndEmptyArrays: true } },
+        {
+            $lookup: {
+                from: "branches",
+                localField: "subBranch.branchId",
+                foreignField: "_id",
+                as: "branch",
+            },
+        },
+        { $unwind: { path: "$branch", preserveNullAndEmptyArrays: true } },
+    ];
+
+    if (search) {
+        const searchRegex = new RegExp(search, "i");
+        basePipeline.push({
+            $match: {
+                $or: [{ ticketId: searchRegex }, { "user.name": searchRegex }],
+            },
+        });
+    }
+
+    const dataPipeline = [
+        ...basePipeline,
+        { $sort: { [sortField]: sortOrder } },
+        { $skip: (pageNumber - 1) * pageSize },
+        { $limit: pageSize },
+    ];
+
     try {
-        if (userId) {
-            console.log("looking tickets with userId");
-            identifiedTickets = await AccountRequest.find({ userId });
-        } else {
-            console.log("looking tickets without userId");
-            identifiedTickets = await AccountRequest.find()
-                .populate({
-                    path: "subBranchId",
-                    select: "name",
-                    populate: { path: "branchId", select: "name" },
-                })
-                .populate({ path: "userId", select: "name" });
-        }
+        const [data, countResult] = await Promise.all([
+            AccountRequest.aggregate(dataPipeline),
+            AccountRequest.aggregate([...basePipeline, { $count: "total" }]),
+        ]);
+
+        const total = countResult[0]?.total || 0;
+        const totalPages = Math.ceil(total / pageSize) || 1;
+
+        const tickets = data.map((doc) => ({
+            ...doc,
+            userId: doc.user
+                ? { _id: doc.user._id, name: doc.user.name }
+                : undefined,
+            subBranchId: doc.subBranch
+                ? {
+                      _id: doc.subBranch._id,
+                      name: doc.subBranch.name,
+                      branchId: doc.branch
+                          ? { _id: doc.branch._id, name: doc.branch.name }
+                          : undefined,
+                  }
+                : undefined,
+        }));
+
+        return res.json({
+            tickets,
+            page: pageNumber,
+            limit: pageSize,
+            total,
+            totalPages,
+            hasNext: pageNumber < totalPages,
+            hasPrev: pageNumber > 1,
+        });
     } catch (err) {
         console.log(err);
         return next(new HttpError("Internal server error occured!", 500));
     }
-
-    res.json({
-        tickets: identifiedTickets.map((ticket) =>
-            ticket.toObject({ getters: true })
-        ),
-    });
 };
 
 const getRequestedAccountsByTicketId = async (req, res, next) => {

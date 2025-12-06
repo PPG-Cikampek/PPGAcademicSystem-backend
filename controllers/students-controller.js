@@ -7,44 +7,276 @@ const Student = require("../models/student");
 const User = require("../models/user");
 
 const getStudents = async (req, res, next) => {
-    let students;
-    try {
-        students = await Student.find()
-            .populate({
-                path: "userId",
-                select: "subBranchId",
-                populate: {
-                    path: "subBranchId",
-                    select: "name",
-                    populate: { path: "branchId", select: "name" },
-                },
-            })
-            .populate({
-                path: "classIds",
-                select: ["name", "subBranchId"],
-                populate: {
-                    path: "teachingGroupId",
-                    select: "branchYearId",
+    const {
+        role,
+        branchId,
+        subBranchId,
+        page,
+        limit,
+        search,
+        sortBy,
+        sortDir,
+        isActive,
+        isProfileComplete,
+        isInternal,
+        group,
+        branch,
+    } = req.query;
+
+    const shouldPaginate =
+        page !== undefined ||
+        limit !== undefined ||
+        search !== undefined ||
+        sortBy !== undefined ||
+        sortDir !== undefined ||
+        isActive !== undefined ||
+        isProfileComplete !== undefined ||
+        isInternal !== undefined ||
+        group !== undefined ||
+        branch !== undefined ||
+        branchId !== undefined ||
+        subBranchId !== undefined;
+
+    if (!shouldPaginate) {
+        // Legacy behaviour: return the full list (used by some existing views)
+        let students;
+        try {
+            students = await Student.find()
+                .populate({
+                    path: "userId",
+                    select: "subBranchId",
                     populate: {
-                        path: "branchYearId",
-                        select: ["name", "isActive"],
+                        path: "subBranchId",
+                        select: "name",
+                        populate: { path: "branchId", select: "name" },
+                    },
+                })
+                .populate({
+                    path: "classIds",
+                    select: ["name", "subBranchId"],
+                    populate: {
+                        path: "teachingGroupId",
+                        select: "branchYearId",
+                        populate: {
+                            path: "branchYearId",
+                            select: ["name", "isActive"],
+                        },
+                    },
+                })
+                .sort({ nis: 1 });
+
+            students = students.map((student) => {
+                const isActiveComputed = student.classIds.some(
+                    (classId) => classId.teachingGroupId.branchYearId.isActive
+                );
+                return { ...student.toObject({ getters: true }), isActive: isActiveComputed };
+            });
+        } catch (err) {
+            console.log(err);
+            return next(new HttpError("Internal server error occured!", 500));
+        }
+        console.log("Get all students requested (legacy)");
+        return res.json({ students });
+    }
+
+    // Server-side pagination, search, filter, and sort
+    const pageNumber = Math.max(parseInt(page || "1", 10), 1);
+    const pageSize = Math.min(Math.max(parseInt(limit || "10", 10), 1), 200);
+
+    const searchRegex = search ? new RegExp(search, "i") : null;
+
+    const sortFieldMap = {
+        name: "name",
+        nis: "nis",
+        isActive: "isActive",
+        isInternal: "isInternal",
+        isProfileComplete: "isProfileComplete",
+        branch: "branchName",
+        group: "groupName",
+    };
+    const resolvedSortField = sortFieldMap[sortBy] || "name";
+    const resolvedSortDir = sortDir === "desc" ? -1 : 1;
+
+    // Build the aggregation pipeline
+    const pipeline = [
+        {
+            $lookup: {
+                from: "users",
+                let: { userId: "$userId" },
+                pipeline: [
+                    { $match: { $expr: { $eq: ["$_id", "$$userId"] } } },
+                    {
+                        $lookup: {
+                            from: "subbranches",
+                            localField: "subBranchId",
+                            foreignField: "_id",
+                            as: "subBranch",
+                        },
+                    },
+                    { $unwind: { path: "$subBranch", preserveNullAndEmptyArrays: true } },
+                    {
+                        $lookup: {
+                            from: "branches",
+                            localField: "subBranch.branchId",
+                            foreignField: "_id",
+                            as: "branch",
+                        },
+                    },
+                    { $unwind: { path: "$branch", preserveNullAndEmptyArrays: true } },
+                ],
+                as: "user",
+            },
+        },
+        { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
+        {
+            $lookup: {
+                from: "classes",
+                localField: "classIds",
+                foreignField: "_id",
+                as: "classes",
+                pipeline: [
+                    {
+                        $lookup: {
+                            from: "teachinggroups",
+                            localField: "teachingGroupId",
+                            foreignField: "_id",
+                            as: "teachingGroup",
+                        },
+                    },
+                    { $unwind: { path: "$teachingGroup", preserveNullAndEmptyArrays: true } },
+                    {
+                        $lookup: {
+                            from: "branchyears",
+                            localField: "teachingGroup.branchYearId",
+                            foreignField: "_id",
+                            as: "branchYear",
+                        },
+                    },
+                    { $unwind: { path: "$branchYear", preserveNullAndEmptyArrays: true } },
+                ],
+            },
+        },
+        {
+            $addFields: {
+                branchName: "$user.branch.name",
+                branchIdFromUser: "$user.branch._id",
+                groupName: "$user.subBranch.name",
+                groupIdFromUser: "$user.subBranch._id",
+                isActive: {
+                    $anyElementTrue: {
+                        $map: {
+                            input: "$classes",
+                            as: "cls",
+                            in: "$$cls.branchYear.isActive",
+                        },
                     },
                 },
-            })
-            .sort({ nis: 1 });
+                userId: {
+                    $mergeObjects: [
+                        "$user",
+                        {
+                            subBranchId: {
+                                $mergeObjects: ["$user.subBranch", { branchId: "$user.branch" }],
+                            },
+                        },
+                    ],
+                },
+                classIds: "$classes",
+            },
+        },
+    ];
 
-        students = students.map((student) => {
-            const isActive = student.classIds.some(
-                (classId) => classId.teachingGroupId.branchYearId.isActive
-            );
-            return { ...student.toObject({ getters: true }), isActive };
+    // Filters
+    const filterMatch = {};
+
+    // Role-scoped filters
+    if (role === "branchAdmin") {
+        if (branchId && mongoose.Types.ObjectId.isValid(branchId)) {
+            filterMatch.branchIdFromUser = new mongoose.Types.ObjectId(branchId);
+        }
+    } else if (role && role !== "admin") {
+        if (subBranchId && mongoose.Types.ObjectId.isValid(subBranchId)) {
+            filterMatch.groupIdFromUser = new mongoose.Types.ObjectId(subBranchId);
+        }
+    }
+
+    // Explicit filters from query
+    if (branch && mongoose.Types.ObjectId.isValid(branch)) {
+        filterMatch.branchIdFromUser = new mongoose.Types.ObjectId(branch);
+    }
+    if (group && mongoose.Types.ObjectId.isValid(group)) {
+        filterMatch.groupIdFromUser = new mongoose.Types.ObjectId(group);
+    }
+
+    if (isActive !== undefined) {
+        if (isActive === "true" || isActive === true) filterMatch.isActive = true;
+        else if (isActive === "false" || isActive === false) filterMatch.isActive = false;
+    }
+    if (isProfileComplete !== undefined) {
+        if (isProfileComplete === "true" || isProfileComplete === true) filterMatch.isProfileComplete = true;
+        else if (isProfileComplete === "false" || isProfileComplete === false) filterMatch.isProfileComplete = false;
+    }
+    if (isInternal !== undefined) {
+        if (isInternal === "true" || isInternal === true) filterMatch.isInternal = true;
+        else if (isInternal === "false" || isInternal === false) filterMatch.isInternal = false;
+    }
+
+    if (Object.keys(filterMatch).length > 0) {
+        pipeline.push({ $match: filterMatch });
+    }
+
+    if (searchRegex) {
+        pipeline.push({
+            $match: {
+                $or: [{ name: searchRegex }, { nis: searchRegex }],
+            },
+        });
+    }
+
+    const pipelineForCount = [...pipeline, { $count: "total" }];
+
+    pipeline.push({ $sort: { [resolvedSortField]: resolvedSortDir, _id: 1 } });
+    pipeline.push({ $skip: (pageNumber - 1) * pageSize });
+    pipeline.push({ $limit: pageSize });
+
+    try {
+        const [students, countResult] = await Promise.all([
+            Student.aggregate(pipeline),
+            Student.aggregate(pipelineForCount),
+        ]);
+
+        const total = countResult[0]?.total || 0;
+        const totalPages = Math.max(Math.ceil(total / pageSize), 1);
+
+        const branchesMeta = new Set();
+        const groupsMeta = new Set();
+        students.forEach((st) => {
+            if (st.branchIdFromUser && st.branchName) {
+                branchesMeta.add(JSON.stringify({ id: st.branchIdFromUser.toString(), name: st.branchName }));
+            }
+            if (st.groupIdFromUser && st.groupName) {
+                groupsMeta.add(JSON.stringify({ id: st.groupIdFromUser.toString(), name: st.groupName }));
+            }
+        });
+
+        console.log("Get students requested (paginated)");
+        return res.json({
+            students,
+            page: pageNumber,
+            limit: pageSize,
+            total,
+            totalPages,
+            hasNext: pageNumber < totalPages,
+            hasPrev: pageNumber > 1,
+            filterMeta: {
+                branches: Array.from(branchesMeta).map((v) => JSON.parse(v)),
+                groups: Array.from(groupsMeta).map((v) => JSON.parse(v)),
+            },
         });
     } catch (err) {
         console.log(err);
         return next(new HttpError("Internal server error occured!", 500));
     }
-    console.log("Get all students requested");
-    res.json({ students });
 };
 
 const getStudentById = async (req, res, next) => {
