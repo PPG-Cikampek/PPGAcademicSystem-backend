@@ -10,6 +10,7 @@ router.get('/student/:scoreId', scoreController.getScoreById);
 
 router.get('/sub-branch/:subBranchId', checkAuth, scoreController.getClassScoresBySubBranchId);
 router.get('/branch-year/:branchYearId', checkAuth, scoreController.getClassScoresByBranchYearId);
+router.get('/branch/:branchId/sub-branches/summary', checkAuth, scoreController.getSubBranchSummaryByBranch);
 
 
 router.patch('/:scoreId', checkAuth, scoreController.patchScoreById);

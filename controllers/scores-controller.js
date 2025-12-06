@@ -1,9 +1,294 @@
-const HttpError = require('../models/http-error')
+const HttpError = require('../models/http-error');
 const mongoose = require('mongoose');
 
 const Munaqasyah = require('../models/munaqasyah');
 const TeachingGroupYear = require('../models/teachingGroupYear');
 const Score = require('../models/score');
+const SubBranch = require('../models/subBranch');
+const User = require('../models/user');
+
+const MATERIAL_FIELDS = [
+    'reciting',
+    'writing',
+    'quranTafsir',
+    'hadithTafsir',
+    'practice',
+    'moralManner',
+    'memorizingSurah',
+    'memorizingHadith',
+    'memorizingDua',
+    'memorizingBeautifulName',
+    'knowledge',
+    'independence'
+];
+
+const LOWER_GRADE_FIELDS = [
+    'reciting',
+    'writing',
+    'practice',
+    'moralManner',
+    'memorizingSurah',
+    'memorizingDua',
+    'memorizingBeautifulName',
+    'knowledge'
+];
+
+const LOWER_GRADE_CLASS_REGEX = /(PAUD|PRA-PAUD|1|2|3|4)/;
+
+const buildAverageExpression = (fieldsExpr) => ({
+    $let: {
+        vars: {
+            fields: fieldsExpr || { $literal: MATERIAL_FIELDS }
+        },
+        in: {
+            $let: {
+                vars: {
+                    fieldScores: {
+                        $map: {
+                            input: '$$fields',
+                            as: 'field',
+                            in: {
+                                $ifNull: [
+                                    {
+                                        $getField: {
+                                            field: 'score',
+                                            input: {
+                                                $getField: {
+                                                    field: '$$field',
+                                                    input: '$$ROOT'
+                                                }
+                                            }
+                                        }
+                                    },
+                                    0
+                                ]
+                            }
+                        }
+                    }
+                },
+                in: {
+                    $divide: [
+                        {
+                            $reduce: {
+                                input: '$$fieldScores',
+                                initialValue: 0,
+                                in: { $add: ['$$value', '$$this'] }
+                            }
+                        },
+                        {
+                            $cond: [
+                                { $eq: [{ $size: '$$fields' }, 0] },
+                                1,
+                                { $size: '$$fields' }
+                            ]
+                        }
+                    ]
+                }
+            }
+        }
+    }
+});
+
+const buildCompletionFlagExpression = (fieldsPath = '$requiredFields') => ({
+    $cond: [
+        {
+            $allElementsTrue: {
+                $map: {
+                    input: fieldsPath,
+                    as: 'field',
+                    in: {
+                        $gt: [
+                            {
+                                $ifNull: [
+                                    {
+                                        $getField: {
+                                            field: 'score',
+                                            input: {
+                                                $getField: {
+                                                    field: '$$field',
+                                                    input: '$$ROOT'
+                                                }
+                                            }
+                                        }
+                                    },
+                                    0
+                                ]
+                            },
+                            0
+                        ]
+                    }
+                }
+            }
+        },
+        1,
+        0
+    ]
+});
+
+const getSubBranchSummaryByBranch = async (req, res, next) => {
+    const { branchId } = req.params;
+    const { branchYearId } = req.query;
+
+    if (!branchYearId) {
+        return next(new HttpError('branchYearId is required', 400));
+    }
+
+    let branchObjectId;
+    let branchYearObjectId;
+    try {
+        branchObjectId = new mongoose.Types.ObjectId(branchId);
+        branchYearObjectId = new mongoose.Types.ObjectId(branchYearId);
+    } catch (err) {
+        return next(new HttpError('Invalid branchId or branchYearId', 400));
+    }
+
+    try {
+        const summary = await SubBranch.aggregate([
+            { $match: { branchId: branchObjectId } },
+            {
+                $lookup: {
+                    from: 'scores',
+                    let: { subBranchId: '$_id' },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: { $eq: ['$subBranchId', '$$subBranchId'] },
+                                branchYearId: branchYearObjectId
+                            }
+                        },
+                        {
+                            $lookup: {
+                                from: 'classes',
+                                localField: 'classId',
+                                foreignField: '_id',
+                                as: 'classDoc',
+                                pipeline: [
+                                    { $project: { name: 1 } }
+                                ]
+                            }
+                        },
+                        {
+                            $addFields: {
+                                className: {
+                                    $ifNull: [{ $arrayElemAt: ['$classDoc.name', 0] }, '']
+                                },
+                                requiredFields: {
+                                    $cond: [
+                                        {
+                                            $regexMatch: {
+                                                input: {
+                                                    $ifNull: [
+                                                        { $arrayElemAt: ['$classDoc.name', 0] },
+                                                        ''
+                                                    ]
+                                                },
+                                                regex: LOWER_GRADE_CLASS_REGEX
+                                            }
+                                        },
+                                        LOWER_GRADE_FIELDS,
+                                        MATERIAL_FIELDS
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            $project: {
+                                avgScoreDoc: buildAverageExpression('$requiredFields'),
+                                requiredFields: 1,
+                                isCompleted: buildCompletionFlagExpression()
+                            }
+                        },
+                        {
+                            $group: {
+                                _id: null,
+                                studentCount: { $sum: 1 },
+                                completedCount: { $sum: '$isCompleted' },
+                                avgScore: { $avg: '$avgScoreDoc' }
+                            }
+                        }
+                    ],
+                    as: 'scoreStats'
+                }
+            },
+            {
+                $lookup: {
+                    from: 'users',
+                    let: { subBranchId: '$_id' },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: { $eq: ['$subBranchId', '$$subBranchId'] },
+                                role: 'munaqisy'
+                            }
+                        },
+                        { $count: 'count' }
+                    ],
+                    as: 'munaqisyStats'
+                }
+            },
+            {
+                $addFields: {
+                    studentCount: {
+                        $ifNull: [{ $arrayElemAt: ['$scoreStats.studentCount', 0] }, 0]
+                    },
+                    completedCount: {
+                        $ifNull: [{ $arrayElemAt: ['$scoreStats.completedCount', 0] }, 0]
+                    },
+                    avgScore: { $arrayElemAt: ['$scoreStats.avgScore', 0] },
+                    munaqisyCount: {
+                        $ifNull: [{ $arrayElemAt: ['$munaqisyStats.count', 0] }, 0]
+                    }
+                }
+            },
+            {
+                $addFields: {
+                    progress: {
+                        $cond: [
+                            { $eq: ['$studentCount', 0] },
+                            0,
+                            {
+                                $round: [
+                                    {
+                                        $multiply: [
+                                            {
+                                                $divide: ['$completedCount', '$studentCount']
+                                            },
+                                            100
+                                        ]
+                                    },
+                                    1
+                                ]
+                            }
+                        ]
+                    },
+                    avgScore: {
+                        $cond: [
+                            { $eq: ['$avgScore', null] },
+                            null,
+                            { $round: ['$avgScore', 1] }
+                        ]
+                    }
+                }
+            },
+            {
+                $project: {
+                    name: 1,
+                    munaqasyahStatus: 1,
+                    studentCount: 1,
+                    completedCount: 1,
+                    munaqisyCount: 1,
+                    avgScore: 1,
+                    progress: 1
+                }
+            }
+        ]);
+
+        res.json({ subBranches: summary });
+    } catch (err) {
+        console.error(err);
+        return next(new HttpError('Internal server error occurred!', 500));
+    }
+};
 
 const getScore = async (req, res, next) => {
     const { userId, studentId, studentNis, branchYearId, subBranchId, classId } = req.query;
@@ -356,4 +641,5 @@ exports.getScore = getScore;
 exports.getScoreById = getScoreById;
 exports.getClassScoresBySubBranchId = getClassScoresBySubBranchId;
 exports.getClassScoresByBranchYearId = getClassScoresByBranchYearId;
+exports.getSubBranchSummaryByBranch = getSubBranchSummaryByBranch;
 exports.patchScoreById = patchScoreById;
