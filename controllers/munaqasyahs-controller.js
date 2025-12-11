@@ -176,7 +176,7 @@ const getMunaqasyahQuestionsForExaminationByCategory = async (req, res, next) =>
     };
 
     try {
-        const categories = ['paud', 'pra-paud', '1', '2', '3', '4', '5', '6'];
+        const categories = ['paud', 'pra-paud', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
         const result = {
             semester,
             category,
