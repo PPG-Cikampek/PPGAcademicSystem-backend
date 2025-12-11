@@ -27,9 +27,19 @@ Compresses all images in the uploads directory to reduce storage and improve per
 node scripts/compressImages.js --dry-run --verbose
 ```
 
-**Compress images:**
+**Compress images (standard mode):**
 ```bash
 node scripts/compressImages.js
+```
+
+**Fast mode (recommended for slow VPS - 4x parallel, lower quality):**
+```bash
+node scripts/compressImages.js --fast
+```
+
+**Custom concurrency (balance speed vs CPU usage):**
+```bash
+node scripts/compressImages.js --concurrency=3
 ```
 
 **Custom target directory:**
@@ -39,10 +49,19 @@ node scripts/compressImages.js --target=path/to/images
 
 ### Compression Settings
 
-- **PNG**: Compression level 9, quality 90, effort 10
+**Standard Mode** (slower, better compression):
+- **PNG**: Compression level 9, quality 90, effort 7
 - **JPEG**: Quality 85, mozjpeg enabled
-- **WebP**: Quality 85, effort 6
-- **BMP**: Converted to PNG format
+- **WebP**: Quality 85, effort 4
+- **Concurrency**: 2 images in parallel
+
+**Fast Mode** (73% faster, good compression):
+- **PNG**: Compression level 6, quality 80, effort 4
+- **JPEG**: Quality 80, mozjpeg disabled
+- **WebP**: Quality 80, effort 3
+- **Concurrency**: 4 images in parallel
+
+**BMP**: Always converted to PNG format
 
 ### Important Notes
 

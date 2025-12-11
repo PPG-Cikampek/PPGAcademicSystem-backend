@@ -11,10 +11,15 @@ require("dotenv").config();
 const args = process.argv.slice(2);
 const isDryRun = args.includes("--dry-run");
 const isVerbose = args.includes("--verbose");
+const isFastMode = args.includes("--fast");
 const targetArg = args.find((arg) => arg.startsWith("--target="));
+const concurrencyArg = args.find((arg) => arg.startsWith("--concurrency="));
 const targetPath = targetArg
     ? targetArg.split("=")[1]
     : path.join(__dirname, "../uploads/images");
+const concurrency = concurrencyArg
+    ? parseInt(concurrencyArg.split("=")[1])
+    : (isFastMode ? 4 : 2); // Default: 2 parallel, 4 in fast mode
 
 // Statistics tracking
 const stats = {
@@ -34,9 +39,9 @@ const IMAGE_FORMATS = {
         compress: async (buffer) =>
             await sharp(buffer)
                 .png({
-                    compressionLevel: 9,
-                    quality: 90,
-                    effort: 10,
+                    compressionLevel: isFastMode ? 6 : 9,
+                    quality: isFastMode ? 80 : 90,
+                    effort: isFastMode ? 4 : 7,
                 })
                 .toBuffer(),
     },
@@ -45,8 +50,8 @@ const IMAGE_FORMATS = {
         compress: async (buffer) =>
             await sharp(buffer)
                 .jpeg({
-                    quality: 85,
-                    mozjpeg: true,
+                    quality: isFastMode ? 80 : 85,
+                    mozjpeg: !isFastMode, // mozjpeg is slower
                 })
                 .toBuffer(),
     },
@@ -55,8 +60,8 @@ const IMAGE_FORMATS = {
         compress: async (buffer) =>
             await sharp(buffer)
                 .webp({
-                    quality: 85,
-                    effort: 6,
+                    quality: isFastMode ? 80 : 85,
+                    effort: isFastMode ? 3 : 4,
                 })
                 .toBuffer(),
     },
@@ -220,11 +225,18 @@ async function compressImagesInDirectory(dirPath) {
         }
 
         console.log("Processing images...\n");
+        if (isFastMode || concurrency > 1) {
+            console.log(`⚡ Parallel processing enabled (${concurrency} concurrent)\n`);
+        }
 
-        // Process each image
-        for (const file of imageFiles) {
-            const filePath = path.join(dirPath, file);
-            await compressImage(filePath);
+        // Process images in parallel batches
+        for (let i = 0; i < imageFiles.length; i += concurrency) {
+            const batch = imageFiles.slice(i, i + concurrency);
+            const batchPromises = batch.map((file) => {
+                const filePath = path.join(dirPath, file);
+                return compressImage(filePath);
+            });
+            await Promise.all(batchPromises);
         }
     } catch (error) {
         console.error(`Error accessing directory: ${error.message}`);
