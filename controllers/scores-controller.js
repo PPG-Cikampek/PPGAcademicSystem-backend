@@ -33,7 +33,22 @@ const LOWER_GRADE_FIELDS = [
     'knowledge'
 ];
 
+const HIGHER_GRADE_FIELDS = [
+    'writing',
+    'quranTafsir',
+    'hadithTafsir',
+    'practice',
+    'moralManner',
+    'memorizingSurah',
+    'memorizingHadith',
+    'memorizingDua',
+    'knowledge',
+    'independence'
+];
+
+
 const LOWER_GRADE_CLASS_REGEX = /(PAUD|PRA-PAUD|1|2|3|4)/;
+const HIGHER_GRADE_CLASS_REGEX = /(7|8|9)/;
 
 const buildAverageExpression = (fieldsExpr) => ({
     $let: {
@@ -182,11 +197,27 @@ const getSubBranchSummaryByBranch = async (req, res, next) => {
                                                         ''
                                                     ]
                                                 },
-                                                regex: LOWER_GRADE_CLASS_REGEX
+                                                regex: HIGHER_GRADE_CLASS_REGEX
                                             }
                                         },
-                                        LOWER_GRADE_FIELDS,
-                                        MATERIAL_FIELDS
+                                        HIGHER_GRADE_FIELDS,
+                                        {
+                                            $cond: [
+                                                {
+                                                    $regexMatch: {
+                                                        input: {
+                                                            $ifNull: [
+                                                                { $arrayElemAt: ['$classDoc.name', 0] },
+                                                                ''
+                                                            ]
+                                                        },
+                                                        regex: LOWER_GRADE_CLASS_REGEX
+                                                    }
+                                                },
+                                                LOWER_GRADE_FIELDS,
+                                                MATERIAL_FIELDS
+                                            ]
+                                        }
                                     ]
                                 }
                             }
