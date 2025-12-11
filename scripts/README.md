@@ -1,4 +1,61 @@
-# Bulk Attendance Creation Script
+# Scripts Documentation
+
+This directory contains utility scripts for the PPG Academic System backend.
+
+---
+
+## Image Compression Script
+
+**File**: `compressImages.js`
+
+Compresses all images in the uploads directory to reduce storage and improve performance.
+
+### Features
+
+- ✅ **In-Place Compression**: Replaces original files while preserving filenames
+- ✅ **Multi-Format Support**: PNG, JPEG, WebP, BMP (GIF skipped)
+- ✅ **Smart Compression**: Only replaces if compressed size is smaller
+- ✅ **Dry Run Mode**: Preview results without modifying files
+- ✅ **Validation**: Checks image integrity before and after compression
+- ✅ **Error Handling**: Skips corrupted files and continues processing
+- ✅ **Detailed Statistics**: Shows size savings and compression ratios
+
+### Usage
+
+**Dry run (preview only):**
+```bash
+node scripts/compressImages.js --dry-run --verbose
+```
+
+**Compress images:**
+```bash
+node scripts/compressImages.js
+```
+
+**Custom target directory:**
+```bash
+node scripts/compressImages.js --target=path/to/images
+```
+
+### Compression Settings
+
+- **PNG**: Compression level 9, quality 90, effort 10
+- **JPEG**: Quality 85, mozjpeg enabled
+- **WebP**: Quality 85, effort 6
+- **BMP**: Converted to PNG format
+
+### Important Notes
+
+- ⚠️ Requires existing daily backup (script replaces files in-place)
+- ⚠️ Corrupted images will be skipped and reported
+- ✅ Already optimized images won't be re-compressed
+- ✅ Filenames remain unchanged (database references preserved)
+
+---
+
+## Bulk Attendance Creation Script
+
+**File**: `createTodayAttendances.js`
 
 This script creates attendance records for all students in all active branch years for the current date.
 
