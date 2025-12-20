@@ -629,9 +629,10 @@ const patchSubBranchMunaqasyahStatus = async (req, res, next) => {
             return next(new HttpError("SubBranch tidak ditemukan!", 404));
         }
 
-        if (subBranch.munaqasyahStatus === "notStarted") {
+        // Create score entries if the new status is 'inProgress'
+        if (munaqasyahStatus === "inProgress") {
             console.log(
-                "Starting to process teaching groups for subBranch:",
+                "Processing score entries for subBranch:",
                 subBranchId
             );
 
@@ -647,79 +648,116 @@ const patchSubBranchMunaqasyahStatus = async (req, res, next) => {
 
             console.log(
                 "Relevant teaching groups found:",
-                relevantTeachingGroups
+                relevantTeachingGroups.length
             );
 
-            // For each relevant teachingGroup, get all students in its classes that belong to this subBranch
-            const scoreEntries = relevantTeachingGroups.flatMap((tg) => {
-                console.log("Processing teaching group:", tg._id);
-
+            // Get all students from relevant teaching groups that belong to this subBranch
+            const allRelevantStudents = relevantTeachingGroups.flatMap((tg) => {
                 return (tg.classes || []).flatMap((classObj) => {
-                    console.log("Processing class:", classObj._id);
-
                     return (classObj.students || [])
                         .filter((student) => {
-                            const belongsToSubBranch =
+                            return (
                                 student.userId &&
                                 student.userId.subBranchId &&
                                 student.userId.subBranchId.toString() ===
-                                    subBranchId;
-                            console.log(
-                                `Student ${student._id} belongs to subBranch:`,
-                                belongsToSubBranch
+                                    subBranchId
                             );
-                            return belongsToSubBranch;
                         })
-                        .map((student) => {
-                            console.log(
-                                "Creating score entry for student:",
-                                student._id
-                            );
-                            return {
-                                userId: student.userId._id,
-                                studentId: student._id,
-                                studentNis: student.nis,
-                                branchYearId: branchYearId,
-                                subBranchId: subBranchId,
-                                teachingGroupId: tg._id,
-                                classId: classObj._id,
-                                isBeingScored: "false",
-                                reciting: { score: 0, examinerUserId: null },
-                                writing: { score: 0, examinerUserId: null },
-                                quranTafsir: { score: 0, examinerUserId: null },
-                                hadithTafsir: {
-                                    score: 0,
-                                    examinerUserId: null,
-                                },
-                                practice: { score: 0, examinerUserId: null },
-                                moralManner: { score: 0, examinerUserId: null },
-                                memorizingSurah: {
-                                    score: 0,
-                                    examinerUserId: null,
-                                },
-                                memorizingHadith: {
-                                    score: 0,
-                                    examinerUserId: null,
-                                },
-                                memorizingDua: {
-                                    score: 0,
-                                    examinerUserId: null,
-                                },
-                                memorizingBeautifulName: {
-                                    score: 0,
-                                    examinerUserId: null,
-                                },
-                                knowledge: { score: 0, examinerUserId: null },
-                                independence: {
-                                    score: 0,
-                                    examinerUserId: null,
-                                },
-                            };
-                        });
+                        .map((student) => ({
+                            student,
+                            teachingGroupId: tg._id,
+                            classId: classObj._id,
+                        }));
                 });
             });
-            if (scoreEntries.length > 0) {
+
+            console.log(
+                "Total students found in subBranch:",
+                allRelevantStudents.length
+            );
+
+            // Fetch existing score entries for this branchYear and subBranch
+            const existingScores = await Score.find({
+                branchYearId: branchYearId,
+                subBranchId: subBranchId,
+            }).select("studentId");
+
+            // Create a Set of existing studentIds for quick lookup
+            const existingStudentIds = new Set(
+                existingScores.map((score) => score.studentId.toString())
+            );
+
+            console.log(
+                "Existing score entries found:",
+                existingStudentIds.size
+            );
+
+            // Filter out students that already have score entries
+            const studentsNeedingScores = allRelevantStudents.filter(
+                ({ student }) =>
+                    !existingStudentIds.has(student._id.toString())
+            );
+
+            console.log(
+                "Students needing new score entries:",
+                studentsNeedingScores.length
+            );
+
+            // Create score entries for students without existing entries
+            if (studentsNeedingScores.length > 0) {
+                const scoreEntries = studentsNeedingScores.map(
+                    ({ student, teachingGroupId, classId }) => {
+                        console.log(
+                            "Creating score entry for student:",
+                            student._id
+                        );
+                        return {
+                            userId: student.userId._id,
+                            studentId: student._id,
+                            studentNis: student.nis,
+                            branchYearId: branchYearId,
+                            subBranchId: subBranchId,
+                            teachingGroupId: teachingGroupId,
+                            classId: classId,
+                            isBeingScored: "false",
+                            reciting: { score: 0, examinerUserId: null },
+                            writing: { score: 0, examinerUserId: null },
+                            quranTafsir: { score: 0, examinerUserId: null },
+                            hadithTafsir: {
+                                score: 0,
+                                examinerUserId: null,
+                            },
+                            practice: { score: 0, examinerUserId: null },
+                            moralManner: { score: 0, examinerUserId: null },
+                            memorizingSurah: {
+                                score: 0,
+                                examinerUserId: null,
+                            },
+                            memorizingHadith: {
+                                score: 0,
+                                examinerUserId: null,
+                            },
+                            memorizingDua: {
+                                score: 0,
+                                examinerUserId: null,
+                            },
+                            memorizingBeautifulName: {
+                                score: 0,
+                                examinerUserId: null,
+                            },
+                            knowledge: { score: 0, examinerUserId: null },
+                            independence: {
+                                score: 0,
+                                examinerUserId: null,
+                            },
+                        };
+                    }
+                );
+
                 await Score.insertMany(scoreEntries);
+                console.log(
+                    `Created ${scoreEntries.length} new score entries`
+                );
             }
         }
 
