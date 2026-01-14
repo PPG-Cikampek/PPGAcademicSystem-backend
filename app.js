@@ -21,6 +21,7 @@ const journalsRoutes = require("./routes/journals-route");
 const materialProgressesRoutes = require("./routes/materialProgresses-route");
 const munaqasyahRoutes = require("./routes/munaqasyahs-route");
 const scoreRoutes = require("./routes/scores-route");
+const bugReportsRoutes = require("./routes/bugReports-route");
 const HttpError = require("./models/http-error");
 const { MongoClient } = require("mongodb");
 
@@ -109,6 +110,7 @@ app.use("/api/journals", journalsRoutes);
 app.use("/api/materialProgress", materialProgressesRoutes);
 app.use("/api/munaqasyahs", munaqasyahRoutes);
 app.use("/api/scores", scoreRoutes);
+app.use("/api/bugReports", bugReportsRoutes);
 
 // Catch-all route for handling unknown routes
 app.use((req, res, next) => {

@@ -21,7 +21,9 @@ const userSchema = new Schema({
     thumbnail: { type: String, required: false },
     subBranchId: { type: mongoose.Types.ObjectId, required: false, ref: 'SubBranch' },
     resetToken: { type: String },
-    resetTokenExpiration: { type: Date }
+    resetTokenExpiration: { type: Date },
+    // Bug Bounty contribution points - accumulated when bugs are fixed
+    contributionPoints: { type: Number, default: 0 }
 });
 
 // Indexes for better query performance
