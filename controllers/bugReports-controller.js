@@ -473,7 +473,7 @@ const getLeaderboard = async (req, res, next) => {
                     userId: '$_id',
                     userName: '$user.name',
                     userEmail: '$user.email',
-                    userImage: '$user.image',
+                    userImage: '$user.thumbnail',
                     totalPoints: 1,
                     reportsFixed: 1,
                     lastContribution: 1
