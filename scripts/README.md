@@ -268,6 +268,142 @@ To automate, integrate with the existing scheduler:
 - Check `.env` file has correct DB credentials
 - Verify network connectivity to MongoDB Atlas
 
+---
+
+## Class-Student Relationship Synchronization Script
+
+**File**: `syncClassStudentRelationship.js`
+
+Synchronizes the bidirectional relationship between Classes and Students. Ensures data consistency when a student is in a class's students array but the class is not in the student's classIds (or vice versa).
+
+### Relationship Overview
+
+- **Class Model**: Contains a `students` array referencing Student documents
+- **Student Model**: Contains a `classIds` array referencing Class documents
+- This is a **bidirectional many-to-many** relationship that must stay in sync
+
+### Features
+
+- ✅ **Bidirectional Sync**: Sync from classes to students or vice versa
+- ✅ **Flexible Modes**: Choose sync direction based on your needs
+- ✅ **Orphaned Reference Detection**: Finds references to non-existent documents
+- ✅ **Dry Run Mode**: Preview changes without modifying data
+- ✅ **Detailed Logging**: Verbose mode for debugging
+- ✅ **Safe Operations**: Uses $addToSet to prevent duplicates
+
+### Usage
+
+**Dry run (preview only):**
+```bash
+node scripts/syncClassStudentRelationship.js --dry-run --verbose
+```
+
+**Sync from classes to students (add missing classIds to students):**
+```bash
+node scripts/syncClassStudentRelationship.js --mode=class-to-student
+```
+
+**Sync from students to classes (add missing students to classes):**
+```bash
+node scripts/syncClassStudentRelationship.js --mode=student-to-class
+```
+
+**Sync both directions (default):**
+```bash
+node scripts/syncClassStudentRelationship.js --mode=both
+```
+
+**Filter by specific branch year (e.g., only sync classes in semester 20252):**
+```bash
+node scripts/syncClassStudentRelationship.js --branch-year=20252
+```
+
+**Combine options (dry run with specific branch year):**
+```bash
+node scripts/syncClassStudentRelationship.js --branch-year=20252 --dry-run --verbose
+```
+
+**Verbose output:**
+```bash
+node scripts/syncClassStudentRelationship.js --verbose
+```
+
+### Modes Explained
+
+1. **class-to-student**: If a student appears in a class's `students` array but that class is not in the student's `classIds`, add it
+   - Use when class data is the source of truth
+   - Fixes missing class references in student records
+
+2. **student-to-class**: If a class appears in a student's `classIds` but that student is not in the class's `students` array, add them
+   - Use when student data is the source of truth
+   - Fixes missing student references in class records
+
+3. **both** (default): Performs both synchronizations
+   - Use for general maintenance
+   - Ensures complete bidirectional consistency
+
+### When to Use
+
+Run this script when:
+- After manually updating class or student assignments
+- After data imports or migrations
+- If you notice inconsistencies in class rosters
+- As part of regular database maintenance
+- After recovering from a backup
+
+### Example Output
+
+```
+═══════════════════════════════════════════════════════════
+  Class-Student Relationship Synchronization Script
+═══════════════════════════════════════════════════════════
+
+Mode: both
+Dry Run: No
+Verbose: Yes
+
+✅ Connected to MongoDB
+
+📋 Syncing from Classes to Students...
+   Found 45 classes to check
+   🔄 Student "Ahmad Ali" (NIS001) missing class "Class 7A"
+   ✅ Added class to student's classIds
+
+✅ Would add 3 class references to students
+   Successfully updated 3 student records
+
+📋 Syncing from Students to Classes...
+   Found 120 students to check
+   🔄 Class "Class 8B" missing student "Fatimah Zahra" (NIS045)
+   ✅ Added student to class's students array
+
+✅ Would add 2 student references to classes
+   Successfully updated 2 class records
+
+🔍 Checking for orphaned references...
+   ✅ No orphaned references found
+
+═══════════════════════════════════════════════════════════
+  Summary
+═══════════════════════════════════════════════════════════
+Total Classes Checked: 45
+Class References Added to Students: 3
+Total Students Checked: 120
+Student References Added to Classes: 2
+
+✅ Synchronization complete!
+```
+
+### Safety Features
+
+- Uses `$addToSet` operator to prevent duplicate entries
+- Dry run mode allows safe testing
+- Validates document existence before updating
+- Comprehensive error handling and logging
+- No data is deleted, only missing references are added
+
+---
+
 ## Support
 
-For issues or questions about this script, contact the development team.
+For issues or questions about these scripts, contact the development team.
