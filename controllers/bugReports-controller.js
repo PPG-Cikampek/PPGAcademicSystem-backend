@@ -30,12 +30,15 @@ const getBugReports = async (req, res, next) => {
         limit = 10,
         sortBy = 'createdAt',
         sortDir = 'desc',
-        search
+        search,
+        scope = ''
     } = req.query;
 
     const userId = req.userData.userId;
     const userRole = req.userData.userRole;
     const isAdmin = userRole === 'admin';
+    const normalizedScope = scope.toLowerCase();
+    const isPublicScope = normalizedScope === 'public';
 
     try {
         const pageNumber = Math.max(parseInt(page, 10) || 1, 1);
@@ -44,8 +47,9 @@ const getBugReports = async (req, res, next) => {
         // Build match stage
         const matchStage = {};
         
-        // Non-admin users can only see their own reports
-        if (!isAdmin) {
+        // Non-admin users can only see their own reports unless requesting the public list
+        console.log('isAdmin:', isAdmin, 'isPublicScope:', isPublicScope);
+        if (!isAdmin && !isPublicScope) {
             matchStage.userId = new mongoose.Types.ObjectId(userId);
         }
         
@@ -124,6 +128,8 @@ const getBugReports = async (req, res, next) => {
             id: doc._id
         }));
 
+        console.log(reports);
+
         return res.json({
             bugReports: reports,
             page: pageNumber,
@@ -145,9 +151,12 @@ const getBugReports = async (req, res, next) => {
  */
 const getBugReportById = async (req, res, next) => {
     const { reportId } = req.params;
+    const { scope = '' } = req.query;
     const userId = req.userData.userId;
     const userRole = req.userData.userRole;
     const isAdmin = userRole === 'admin';
+    const normalizedScope = scope.toLowerCase();
+    const isPublicView = normalizedScope === 'public';
 
     try {
         const report = await BugReport.findOne({ reportId })
@@ -158,7 +167,7 @@ const getBugReportById = async (req, res, next) => {
         }
 
         // Non-admin can only view their own reports
-        if (!isAdmin && report.userId._id.toString() !== userId) {
+        if (!isAdmin && !isPublicView && report.userId._id.toString() !== userId) {
             return next(new HttpError('Anda tidak memiliki akses ke laporan ini!', 403));
         }
 
