@@ -282,6 +282,21 @@ const getClassesBySubBranchIdAndAcademicYearId = async (req, res, next) => {
         );
     }
 
+    const specialClasses = ["Kelas PRA-PAUD", "Kelas PAUD"];
+    classes.sort((a, b) => {
+        const aSpecial = specialClasses.indexOf(a.name);
+        const bSpecial = specialClasses.indexOf(b.name);
+        if (aSpecial !== -1 && bSpecial !== -1) {
+            return aSpecial - bSpecial;
+        } else if (aSpecial !== -1) {
+            return -1;
+        } else if (bSpecial !== -1) {
+            return 1;
+        } else {
+            return a.name.localeCompare(b.name);
+        }
+    });
+
     console.log("Get classes by subBranchId and academicYearId requested");
     res.json({
         classes: classes.map((cls) => cls.toObject({ getters: true })),
