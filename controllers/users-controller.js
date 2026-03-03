@@ -3,9 +3,6 @@ const path = require("path");
 const HttpError = require("../models/http-error");
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
-const crypto = require("crypto");
-const nodemailer = require("nodemailer");
 const { v1: uuidv1 } = require("uuid");
 const { generateThumbnailBase64 } = require("../utils/thumbnail-generator");
 
@@ -562,85 +559,10 @@ const patchRequestedAccountsByTicketId = async (req, res, next) => {
     }
 };
 
-const login = async (req, res, next) => {
-    const { email, password, nis } = req.body;
-
-    console.log(password);
-    console.log(nis);
-
-    let existingUser;
-    try {
-        if (email) {
-            existingUser = await User.findOne({ email: email }).populate({
-                path: "subBranchId",
-                select: "name",
-                populate: { path: "branchId", select: "name" },
-            });
-        } else if (nis) {
-            const student = await Student.findOne({ nis: nis }).populate({
-                path: "userId",
-                populate: {
-                    path: "subBranchId",
-                    select: "name",
-                    populate: { path: "branchId", select: "name" },
-                },
-            });
-            existingUser = student ? student.userId : null;
-        }
-    } catch (err) {
-        return next(new HttpError("Internal server error occurred!", 500));
-    }
-
-    if (!existingUser) {
-        return next(
-            new HttpError("Email atau NIS tidak terdaftar, hubungi PJP!", 404)
-        );
-    }
-
-    let isPasswordValid;
-    try {
-        isPasswordValid = await bcrypt.compare(password, existingUser.password);
-    } catch (err) {
-        return next(new HttpError("Internal server error occurred!", 500));
-    }
-
-    if (!isPasswordValid) {
-        return next(new HttpError("Password Salah!", 401));
-    }
-
-    let token;
-    token = jwt.sign(
-        {
-            userId: existingUser.id,
-            email: existingUser.email,
-            role: existingUser.role,
-            userName: existingUser.name,
-            userSubBranchId: existingUser.subBranchId._id,
-            userBranchId: existingUser.subBranchId.branchId._id,
-        },
-        process.env.JWT_KEY,
-        { expiresIn: "3h" }
-    );
-
-    const userWithoutPassword = existingUser.toObject({ getters: true });
-    delete userWithoutPassword.password;
-
-    console.log(`User ${email || nis} logged in.`);
-    res.json({
-        message: "Logged in successfully!",
-        user: userWithoutPassword,
-        token,
-    });
-};
-
 const bulkCreateUsersAndStudents = async (req, res, next) => {
     const { year, count, subBranchId, role } = req.body;
 
     console.log(req.body);
-
-    if (req.userData.userRole !== "admin") {
-        return next(new HttpError("Unauthorized", 401));
-    }
 
     if (!count || count <= 0) {
         return next(new HttpError("Invalid count provided!", 400));
@@ -855,10 +777,6 @@ const createUser = async (req, res, next) => {
 
     const normalizedName = normalizeName(name);
 
-    if (req.userData.userRole !== "admin") {
-        return next(new HttpError("Unauthorized", 401));
-    }
-
     const createdTime = new Date();
 
     let existingUser;
@@ -958,10 +876,6 @@ const createUser = async (req, res, next) => {
 const deleteUser = async (req, res, next) => {
     const userId = req.params.userId;
 
-    if (req.userData.userRole !== "admin") {
-        return next(new HttpError("Unauthorized", 401));
-    }
-
     let user;
     try {
         user = await User.findById(userId);
@@ -1022,10 +936,6 @@ const deleteUser = async (req, res, next) => {
 
 const bulkDeleteUsers = async (req, res, next) => {
     const { userIds } = req.body;
-
-    if (req.userData.userRole !== "admin") {
-        return next(new HttpError("Unauthorized", 401));
-    }
 
     if (!Array.isArray(userIds) || userIds.length === 0) {
         return next(new HttpError("No user IDs provided.", 400));
@@ -1125,212 +1035,6 @@ const updateUser = async (req, res, next) => {
     }
 };
 
-const requestResetPassword = async (req, res, next) => {
-    const { email } = req.body;
-
-    let user;
-    try {
-        user = await User.findOne({ email });
-        if (!user) {
-            return next(new HttpError("Email tidak terdaftar!", 404));
-        }
-    } catch (err) {
-        return next(new HttpError("Internal server error occurred!", 500));
-    }
-
-    const token = crypto.randomBytes(64).toString("hex");
-    const tokenExpiration = Date.now() + 3600000; // 1 hour
-
-    user.resetToken = token;
-    user.resetTokenExpiration = tokenExpiration;
-
-    try {
-        await user.save();
-    } catch (err) {
-        return next(new HttpError("Internal server error occurred!", 500));
-    }
-
-    const transporter = nodemailer.createTransport({
-        host: "smtp.zoho.com",
-        port: 465,
-        secure: true, // true for 465, false for other ports
-        auth: {
-            user: process.env.SERVER_EMAIL,
-            pass: process.env.SERVER_EMAIL_PASSWORD,
-        },
-    });
-
-    const mailOptions = {
-        from: process.env.SERVER_EMAIL,
-        to: user.email,
-        subject: "Reset Kata Sandi Sistem Akademik Digital PPG Cikampek",
-        html: `<p>Anda meminta untuk mereset password</p>
-               <p>Klik Tautan Berikut <a href="${
-                   process.env.FRONTEND_URL || process.env.BASE_URL
-               }/reset-password/${token}">link</a> untuk mereset password.</p>
-               <br>
-               <p>Link di atas berlaku selama 1 jam.</p>`,
-    };
-
-    transporter.sendMail(mailOptions, (error, info) => {
-        if (error) {
-            console.log(error);
-            return next(new HttpError("Failed to send email!", 500));
-        }
-        console.log("Password reset request sent to " + email);
-        res.status(200).json({
-            message: `Email berisi langkah-langkah mereset password telah dikirim ke ${email}`,
-        });
-    });
-};
-
-const resetPassword = async (req, res, next) => {
-    const { token, newPassword } = req.body;
-
-    let user;
-    try {
-        user = await User.findOne({
-            resetToken: token,
-            resetTokenExpiration: { $gt: Date.now() },
-        });
-        if (!user) {
-            return next(
-                new HttpError("Token tidak valid atau sudah kadaluarsa!", 400)
-            );
-        }
-    } catch (err) {
-        return next(new HttpError("Internal server error occurred!", 500));
-    }
-
-    let hashedPassword;
-    try {
-        hashedPassword = await bcrypt.hash(newPassword, 12);
-    } catch (err) {
-        return next(new HttpError("Gagal mengubah password!", 500));
-    }
-
-    user.password = hashedPassword;
-    user.resetToken = undefined;
-    user.resetTokenExpiration = undefined;
-
-    try {
-        await user.save();
-    } catch (err) {
-        return next(new HttpError("Internal server error occurred!", 500));
-    }
-
-    console.log(user.email + " has changed their password");
-    res.status(200).json({ message: "Password berhasil diubah!" });
-};
-
-const requestVerifyEmail = async (req, res, next) => {
-    const { email, newEmail, isNewEmail } = req.body;
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (
-        !email ||
-        !emailRegex.test(email) ||
-        !newEmail ||
-        !emailRegex.test(newEmail)
-    ) {
-        return next(new HttpError("Email tidak valid!", 400));
-    }
-
-    let user;
-    try {
-        user = await User.findOne({ email });
-        if (!user && !newEmail) {
-            return next(new HttpError("Email tidak terdaftar!", 404));
-        }
-        if (isNewEmail) {
-            existingUser = await User.findOne({ email: newEmail });
-            if (existingUser) {
-                return next(new HttpError("Email sudah terdaftar!", 404));
-            }
-        }
-    } catch (err) {
-        return next(new HttpError("Internal server error occurred!", 500));
-    }
-
-    const transporter = nodemailer.createTransport({
-        host: "smtp.zoho.com",
-        port: 465,
-        secure: true, // true for 465, false for other ports
-        auth: {
-            user: process.env.SERVER_EMAIL,
-            pass: process.env.SERVER_EMAIL_PASSWORD,
-        },
-    });
-
-    let mailOptions;
-    if (isNewEmail) {
-        const token = jwt.sign({ email, newEmail }, process.env.JWT_KEY, {
-            expiresIn: "1h",
-        });
-        mailOptions = {
-            from: process.env.SERVER_EMAIL,
-            to: newEmail,
-            subject: "Pengubahan Email Sistem Akademik Digital PPG Cikampek",
-            html: `<p>Anda meminta mengubah Email Sistem Akademik Digital PPG Cikampek</p>
-                   <p>Klik Tautan Berikut <a href="${process.env.BASE_URL}/verify-email/${token}">link</a> untuk memverifikasi email baru Anda.</p>
-                   <br>
-                   <p>Link di atas berlaku selama 1 jam.</p> `,
-        };
-    } else {
-        const token = jwt.sign(
-            { email, newEmail: email },
-            process.env.JWT_KEY,
-            { expiresIn: "1h" }
-        );
-        mailOptions = {
-            from: process.env.SERVER_EMAIL,
-            to: user.email,
-            subject: "Verifikasi Email Sistem Akademik Digital PPG Cikampek",
-            html: `<p>Verifikasi Email Sistem Akademik Digital PPG Cikampek</p>
-                   <p>Klik Tautan Berikut <a href="${process.env.BASE_URL}/verify-email/${token}">link</a> untuk memverifikasi email Anda.</p>
-                   <br>
-                   <p>Link di atas berlaku selama 1 jam.</p> `,
-        };
-    }
-
-    transporter.sendMail(mailOptions, (error, info) => {
-        if (error) {
-            console.log(error);
-            return next(new HttpError("Failed to send email!", 500));
-        }
-        newEmail
-            ? console.log("Email verification request sent to " + email)
-            : console.log("Email change request sent to " + newEmail);
-        res.status(200).json({
-            message: `Email berisi langkah-langkah selanjutnya telah dikirim ke ${
-                newEmail || email
-            }`,
-        });
-    });
-};
-
-const verifyEmail = async (req, res, next) => {
-    const { token } = req.params;
-    try {
-        const decoded = jwt.verify(token, process.env.JWT_KEY);
-
-        const user = await User.findOneAndUpdate(
-            { email: decoded.email },
-            { email: decoded.newEmail },
-            { new: true }
-        );
-
-        user.isEmailVerified = true;
-        await user.save();
-
-        console.log(user.email + " has verified their email");
-
-        res.status(200).json({ message: "Email berhasil diverifikasi!" });
-    } catch (err) {
-        return next(new HttpError("Token tidak valid/kadaluarsa!", 400));
-    }
-};
-
 const updateProfileImage = async (req, res, next) => {
     const userId = req.params.userId;
     let user;
@@ -1389,62 +1093,14 @@ const updateProfileImage = async (req, res, next) => {
     res.status(200).json({ message: "Berhasil memperbarui foto profil!" });
 };
 
-const changeUserPassword = async (req, res, next) => {
-    const { email, oldPassword, newPassword, confirmNewPassword } = req.body;
-
-    if (confirmNewPassword !== newPassword) {
-        return next(new HttpError("Password tidak sama!", 400));
-    }
-
-    let user;
-    try {
-        user = await User.findOne({ email });
-    } catch (err) {
-        return next(new HttpError("Internal server error occurred!", 500));
-    }
-
-    if (!user) {
-        return next(new HttpError("Email tidak terdaftar!", 404));
-    }
-
-    const isPasswordValid = await bcrypt.compare(oldPassword, user.password);
-    if (!isPasswordValid) {
-        return next(new HttpError("Password lama salah!", 401));
-    }
-
-    let hashedPassword;
-    try {
-        hashedPassword = await bcrypt.hash(newPassword, 12);
-    } catch (err) {
-        return next(new HttpError("Gagal mengubah password!", 500));
-    }
-
-    user.password = hashedPassword;
-
-    try {
-        await user.save();
-    } catch (err) {
-        return next(new HttpError("Internal server error occurred!", 500));
-    }
-
-    console.log(user.email + " has changed their password");
-    res.status(200).json({ message: "Password berhasil diubah!" });
-};
-
 exports.getUsers = getUsers;
 exports.bulkCreateUsersAndStudents = bulkCreateUsersAndStudents;
-exports.login = login;
 exports.createUser = createUser;
 exports.getUsersById = getUsersById;
 exports.deleteUser = deleteUser;
 exports.bulkDeleteUsers = bulkDeleteUsers;
 exports.updateUser = updateUser;
-exports.requestResetPassword = requestResetPassword;
-exports.resetPassword = resetPassword;
-exports.requestVerifyEmail = requestVerifyEmail;
-exports.verifyEmail = verifyEmail;
 exports.updateProfileImage = updateProfileImage;
-exports.changeUserPassword = changeUserPassword;
 exports.requestAccounts = requestAccounts;
 exports.getRequestedAccountsByUserId = getRequestedAccountsByUserId;
 exports.getRequestedAccountsByTicketId = getRequestedAccountsByTicketId;
@@ -1456,11 +1112,6 @@ exports.patchRequestedAccountsByTicketId = patchRequestedAccountsByTicketId;
  * - Sets each processed ticket's status to 'approved' on success
  */
 const approveAndCreateAllPendingTickets = async (req, res, next) => {
-    // Only admin is allowed to approve and create in bulk
-    if (!req.userData || req.userData.userRole !== "admin") {
-        return next(new HttpError("Unauthorized", 401));
-    }
-
     // Find all pending tickets
     let pendingTickets;
     try {

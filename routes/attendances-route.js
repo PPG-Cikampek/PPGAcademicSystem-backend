@@ -6,7 +6,7 @@ const checkAuth = require('../middlewares/check-auth')
 const router = express.Router();
 
 // protect all attendance routes
-router.use(checkAuth)
+// router.use(checkAuth)
 
 router.get('/:attendanceId', attendancesController.getAttendanceById)
 router.get('/class/:classId', attendancesController.getAttendancesByClass)

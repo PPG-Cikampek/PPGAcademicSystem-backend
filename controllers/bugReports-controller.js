@@ -258,12 +258,6 @@ const updateBugReportStatus = async (req, res, next) => {
         rejectionComment,
         adminNotes 
     } = req.body;
-    const userRole = req.userData.userRole;
-
-    // Admin-only check
-    if (userRole !== 'admin') {
-        return next(new HttpError('Hanya admin yang dapat mengubah status laporan!', 403));
-    }
 
     if (!newStatus || !BUG_REPORT_STATUSES.includes(newStatus.toLowerCase())) {
         return next(new HttpError('Status tidak valid!', 400));
@@ -341,12 +335,6 @@ const updateBugReportStatus = async (req, res, next) => {
 const addBugReportUpdate = async (req, res, next) => {
     const { reportId } = req.params;
     const { title, description } = req.body;
-    const userRole = req.userData.userRole;
-
-    // Admin-only check
-    if (userRole !== 'admin') {
-        return next(new HttpError('Hanya admin yang dapat menambahkan update!', 403));
-    }
 
     if (!title || !description) {
         return next(new HttpError('Judul dan deskripsi update wajib diisi!', 400));
@@ -535,12 +523,6 @@ const getLeaderboard = async (req, res, next) => {
  * GET /api/bugReports/metrics
  */
 const getMetrics = async (req, res, next) => {
-    const userRole = req.userData.userRole;
-
-    if (userRole !== 'admin') {
-        return next(new HttpError('Hanya admin yang dapat melihat metrik!', 403));
-    }
-
     try {
         const metrics = await BugReport.aggregate([
             {

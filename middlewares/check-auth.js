@@ -1,40 +1,33 @@
-const jwt = require('jsonwebtoken');
-const HttpError = require('../models/http-error')
+const { jwtVerify } = require("jose");
+const HttpError = require("../models/http-error");
 
-module.exports = (req, res, next) => {
+const iamSecret = new TextEncoder().encode(process.env.IAM_JWT_SECRET);
+
+module.exports = async (req, res, next) => {
     try {
-        // Allow preflight requests to pass through
-        if (req.method === 'OPTIONS') {
-            return next();
+        if (req.method === "OPTIONS") return next();
+
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith("Bearer ")) {
+            throw new Error("No token");
         }
 
-        if (!req.headers || !req.headers.authorization) {
-            throw new Error('No authorization header');
-        }
+        const token = authHeader.split(" ")[1];
+        if (!token) throw new Error("No token");
 
-        const parts = req.headers.authorization.split(' ');
-        if (parts.length !== 2) {
-            throw new Error('Malformed authorization header');
-        }
-
-        const token = parts[1];
-        if (!token) {
-            throw new Error('Invalid token');
-        }
-
-        const decodedToken = jwt.verify(token, process.env.JWT_KEY);
-
-        console.log('Auth decoded token:', decodedToken);
+        const { payload } = await jwtVerify(token, iamSecret, {
+            issuer: "iam.ppgcikampek.id",
+            audience: "ppg-cikampek-apps",
+        });
 
         req.userData = {
-            userId: decodedToken.userId,
-            userRole: decodedToken.role,
-            userBranchId: decodedToken.userBranchId
+            userId: payload.userId,
+            userRole: payload.role,
+            userBranchId: payload.branchId,
+            userSubBranchId: payload.subBranchId,
         };
         next();
     } catch (err) {
-        console.error('Authentication error:', err.message || err);
-        return next(new HttpError('Authentication Failed!', 401));
+        return next(new HttpError("Authentication Failed!", 401));
     }
-
 };
