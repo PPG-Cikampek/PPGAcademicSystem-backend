@@ -191,6 +191,7 @@ const getMunaqasyahQuestionsForExaminationByCategory = async (req, res, next) =>
                 semester,
                 classGrade,
                 category,
+                status: 'active',
             });
 
             if (eligibleQuestions.length > 0) {
