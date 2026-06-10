@@ -24,8 +24,6 @@ const MONGO_URI = `mongodb://${process.env.DB_USER}:${process.env.DB_PASSWORD}@c
 const stats = {
   academicYearName: '',
   branchesSelected: 0,
-  branchFilesCreated: 0,
-  totalSubBranchSheets: 0,
   totalStudentsExported: 0,
   studentsWithClass: 0,
   studentsWithoutClass: 0,
@@ -74,12 +72,6 @@ async function selectBranches() {
   return branches.filter(b => selectedNames.includes(b.name));
 }
 
-function extractGradeFromClass(classDoc) {
-  if (!classDoc || !classDoc.name) return 0;
-  const match = classDoc.name.match(/(\d+)/);
-  return match ? parseInt(match[1], 10) : 0;
-}
-
 function classSortKey(classDoc) {
   if (!classDoc) return 999;
   const name = (classDoc.name || '').toLowerCase().replace(/-/g, ' ');
@@ -93,25 +85,54 @@ function classSortKey(classDoc) {
   return 50;
 }
 
-function getUniformCriteria(student, classDoc) {
-  if (!classDoc) return 'Kelas Tidak Memenuhi Kriteria';
+const monthNames = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
 
-  const className = (classDoc.name || '').toLowerCase().replace(/-/g, ' ');
-  if (className.includes('pra paud')) return 'Kelas Tidak Memenuhi Kriteria';
-
-  const grade = extractGradeFromClass(classDoc);
-  if (grade >= 6) return 'Kelas Tidak Memenuhi Kriteria';
-
-  // if (student.dateOfBirth) {
-  //   const dob = new Date(student.dateOfBirth);
-  //   const cutoff = new Date(2021, 7, 31);
-  //   if (dob > cutoff) return 'Tanggal Lahir Tidak Memenuhi Kriteria';
-  // }
-
-  return '';
+function formatDate(d) {
+  return `${String(d.getDate()).padStart(2, '0')} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
 }
 
-async function processBranch(branch, activeAcademicYear) {
+function calcAge(d) {
+  const today = new Date();
+  let age = today.getFullYear() - d.getFullYear();
+  const m = today.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < d.getDate())) age--;
+  return age;
+}
+
+function isInAllowedGrades(classDoc) {
+  if (!classDoc) return false;
+  const name = (classDoc.name || '').toLowerCase().replace(/-/g, ' ');
+  if (name.includes('pra paud')) return true;
+  if (name.includes('paud')) return true;
+  const match = name.match(/(\d+)/);
+  if (match) {
+    const num = parseInt(match[1], 10);
+    if (num >= 1 && num <= 7) return true;
+  }
+  return false;
+}
+
+function isFlagged(entry) {
+  if (!entry.hasClass) return true;
+
+  const student = entry.student;
+  const dob = student.dateOfBirth ? new Date(student.dateOfBirth) : null;
+  const hasValidDOB = dob && !isNaN(dob.getTime());
+
+  if (!hasValidDOB) {
+    if (!isInAllowedGrades(entry.classDoc)) return true;
+  }
+
+  if (hasValidDOB) {
+    const age = calcAge(dob);
+    if (age < 7) return true;
+    if (age > 12) return true;
+  }
+
+  return false;
+}
+
+async function collectBranchData(branch, activeAcademicYear, allEntries) {
   log.section(`Branch: ${branch.name}`);
 
   const subBranches = await SubBranch.find({ _id: { $in: branch.subBranches || [] } }).lean();
@@ -119,7 +140,7 @@ async function processBranch(branch, activeAcademicYear) {
 
   if (subBranches.length === 0) {
     log.warning(`No subBranches for "${branch.name}" — skip`);
-    return null;
+    return;
   }
 
   const activeBYs = await BranchYear.find({
@@ -131,7 +152,7 @@ async function processBranch(branch, activeAcademicYear) {
 
   if (activeBYs.length === 0) {
     log.warning(`No active BranchYears for "${branch.name}" — skip`);
-    return null;
+    return;
   }
 
   const teachingGroups = await TeachingGroup.find({
@@ -141,7 +162,7 @@ async function processBranch(branch, activeAcademicYear) {
 
   if (teachingGroups.length === 0) {
     log.warning(`No teaching groups for "${branch.name}" — skip`);
-    return null;
+    return;
   }
 
   const tgMap = {};
@@ -154,26 +175,27 @@ async function processBranch(branch, activeAcademicYear) {
 
   if (activeClasses.length === 0) {
     log.warning(`No active classes for "${branch.name}" — skip`);
-    return null;
+    return;
   }
 
   const activeClassIdSet = new Set(activeClasses.map(c => c._id.toString()));
   const activeClassMap = {};
   for (const c of activeClasses) activeClassMap[c._id.toString()] = c;
 
-  const subBranchMap = {};
-  for (const sb of subBranches) subBranchMap[sb._id.toString()] = sb;
   const subBranchIds = subBranches.map(sb => sb._id);
   const subBranchIdStrSet = new Set(subBranchIds.map(id => id.toString()));
+  const subBranchNameMap = {};
+  for (const sb of subBranches) subBranchNameMap[sb._id.toString()] = sb.name;
 
   const studentsWithClass = await Student.find({
+    gender: 'male',
     classIds: { $in: activeClasses.map(c => c._id) },
   }).populate('userId').lean();
 
   log.info(`Students WITH active class: ${studentsWithClass.length}`);
 
-  const sbStudents = {};
   const processedUserIds = new Set();
+  const branchName = branch.name;
 
   for (const student of studentsWithClass) {
     const user = student.userId;
@@ -218,8 +240,14 @@ async function processBranch(branch, activeAcademicYear) {
       log.verbose(`TG "${tg.name}" has no subBranch matching branch "${branch.name}" and user has no subBranch — skip student ${student.name}`);
       continue;
     }
-    if (!sbStudents[sbId]) sbStudents[sbId] = [];
-    sbStudents[sbId].push({ student, classDoc, hasClass: true });
+
+    allEntries.push({
+      student,
+      classDoc,
+      hasClass: true,
+      branchName,
+      subBranchName: subBranchNameMap[sbId] || 'Unknown',
+    });
     processedUserIds.add(user._id.toString());
     stats.studentsWithClass++;
   }
@@ -231,6 +259,7 @@ async function processBranch(branch, activeAcademicYear) {
 
   if (userCandidates.length > 0) {
     const studentsNoClass = await Student.find({
+      gender: 'L',
       userId: { $in: userCandidates.map(u => u._id) },
     }).populate('userId').lean();
 
@@ -257,140 +286,22 @@ async function processBranch(branch, activeAcademicYear) {
         continue;
       }
 
-      if (!sbStudents[sbId]) sbStudents[sbId] = [];
-      sbStudents[sbId].push({ student, classDoc: null, hasClass: false });
+      allEntries.push({
+        student,
+        classDoc: null,
+        hasClass: false,
+        branchName,
+        subBranchName: subBranchNameMap[sbId] || 'Unknown',
+      });
       stats.studentsWithoutClass++;
     }
   }
 
-  const wb = new ExcelJS.Workbook();
-  wb.creator = 'PPGAcademicSystem';
-  wb.created = new Date();
-
-  const sortedSubBranches = [...subBranches].sort((a, b) => a.name.localeCompare(b.name));
-
-  for (const sb of sortedSubBranches) {
-    const sbId = sb._id.toString();
-    const entries = sbStudents[sbId];
-    if (!entries || entries.length === 0) continue;
-
-    const ws = wb.addWorksheet(sb.name);
-
-    const headers = ['No', 'Nama', 'NIS', 'Kelas', 'Tanggal Lahir', 'Usia', 'Ukuran Baju'];
-    const headerRow = ws.addRow(headers);
-    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    headerRow.eachCell(cell => {
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } };
-      cell.border = {
-        top: { style: 'thin' },
-        left: { style: 'thin' },
-        bottom: { style: 'thin' },
-        right: { style: 'thin' },
-      };
-      cell.alignment = { horizontal: 'center', vertical: 'middle' };
-    });
-
-    ws.columns = [
-      { width: 5 },
-      { width: 32 },
-      { width: 16 },
-      { width: 28 },
-      { width: 20 },
-      { width: 8 },
-      { width: 34 },
-    ];
-
-    entries.sort((a, b) => {
-      const aKey = classSortKey(a.classDoc);
-      const bKey = classSortKey(b.classDoc);
-      if (aKey !== bKey) return aKey - bKey;
-      return (a.student.name || '').localeCompare(b.student.name || '');
-    });
-
-    const normal = [];
-    const flagged = [];
-
-    for (const entry of entries) {
-      const ukuran = getUniformCriteria(entry.student, entry.classDoc);
-      entry.ukuran = ukuran;
-      if (ukuran) flagged.push(entry);
-      else normal.push(entry);
-    }
-
-    const monthNames = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
-
-    function formatDate(d) {
-      return `${String(d.getDate()).padStart(2, '0')} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
-    }
-
-    function calcAge(d) {
-      const today = new Date();
-      let age = today.getFullYear() - d.getFullYear();
-      const m = today.getMonth() - d.getMonth();
-      if (m < 0 || (m === 0 && today.getDate() < d.getDate())) age--;
-      return age;
-    }
-
-    let no = 1;
-
-    for (const entry of normal) {
-      const { student, classDoc } = entry;
-      const dateValue = student.dateOfBirth ? new Date(student.dateOfBirth) : null;
-      const kelas = entry.hasClass ? classDoc.name : 'Tidak terdaftar ke kelas';
-      const dateStr = dateValue ? formatDate(dateValue) : '';
-      const usia = dateValue ? calcAge(dateValue) : null;
-
-      ws.addRow([no, student.name || '', student.nis || '', kelas, dateStr, usia, '']);
-      no++;
-    }
-
-    if (flagged.length > 0) {
-      const sepRow = ws.addRow([]);
-      ws.mergeCells(sepRow.number, 1, sepRow.number, 7);
-      sepRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
-
-      for (const entry of flagged) {
-        const { student, classDoc } = entry;
-        const dateValue = student.dateOfBirth ? new Date(student.dateOfBirth) : null;
-        const kelas = entry.hasClass ? classDoc.name : 'Tidak terdaftar ke kelas';
-        const dateStr = dateValue ? formatDate(dateValue) : '';
-        const usia = dateValue ? calcAge(dateValue) : null;
-
-        const row = ws.addRow([no, student.name || '', student.nis || '', kelas, dateStr, usia, entry.ukuran]);
-        row.getCell(7).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF0000' } };
-        no++;
-      }
-    }
-
-    stats.totalSubBranchSheets++;
-    stats.totalStudentsExported += entries.length;
-    log.success(`   Sheet "${sb.name}": ${entries.length} student(s)`);
-  }
-
-  if (wb.worksheets.length === 0) {
-    log.warning(`No data to export for "${branch.name}"`);
-    return null;
-  }
-
-  log.info(`   Total sheets: ${wb.worksheets.length}`);
-
-  if (!isDryRun) {
-    if (!fs.existsSync(OUTPUT_DIR)) {
-      fs.mkdirSync(OUTPUT_DIR, { recursive: true });
-    }
-    const filePath = path.join(OUTPUT_DIR, `${branch.name}.xlsx`);
-    await wb.xlsx.writeFile(filePath);
-    log.success(`   Written: ${branch.name}.xlsx`);
-  } else {
-    log.info(`   [DRY-RUN] Would write: ${branch.name}.xlsx`);
-  }
-
-  stats.branchFilesCreated++;
-  return true;
+  log.success(`   Done: ${branch.name}`);
 }
 
 async function main() {
-  log.section(`EXPORT STUDENTS TO EXCEL${isDryRun ? ' [DRY RUN]' : ''}`);
+  log.section(`EXPORT STUDENTS TO EXCEL — FORSGI${isDryRun ? ' [DRY RUN]' : ''}`);
   if (isDryRun) log.warning('DRY RUN — No files will be written');
 
   try {
@@ -412,16 +323,132 @@ async function main() {
     stats.branchesSelected = selectedBranches.length;
     log.info(`Branches: ${selectedBranches.map(b => b.name).join(', ')}`);
 
+    const allEntries = [];
+
     for (const branch of selectedBranches) {
-      await processBranch(branch, activeAY);
+      await collectBranchData(branch, activeAY, allEntries);
+    }
+
+    stats.totalStudentsExported = allEntries.length;
+
+    log.section('BUILDING EXCEL');
+
+    if (allEntries.length === 0) {
+      log.warning('No students found — no file generated');
+      await mongoose.disconnect();
+      process.exit(0);
+    }
+
+    const normal = [];
+    const flagged = [];
+
+    for (const entry of allEntries) {
+      if (isFlagged(entry)) flagged.push(entry);
+      else normal.push(entry);
+    }
+
+    const sortFn = (a, b) => {
+      const desaCmp = (a.branchName || '').localeCompare(b.branchName || '');
+      if (desaCmp !== 0) return desaCmp;
+
+      const kelompokCmp = (a.subBranchName || '').localeCompare(b.subBranchName || '');
+      if (kelompokCmp !== 0) return kelompokCmp;
+
+      const kelasCmp = classSortKey(a.classDoc) - classSortKey(b.classDoc);
+      if (kelasCmp !== 0) return kelasCmp;
+
+      return (a.student.name || '').localeCompare(b.student.name || '');
+    };
+
+    normal.sort(sortFn);
+    flagged.sort(sortFn);
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'PPGAcademicSystem';
+    wb.created = new Date();
+
+    const ws = wb.addWorksheet('Data Caberawit');
+
+    const headers = ['No', 'Name', 'Kelas', 'Tanggal Lahir', 'Usia', 'Nama Orang Tua', 'No. Hp Orang Tua', 'Kelompok', 'Desa'];
+    const headerRow = ws.addRow(headers);
+    headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    headerRow.eachCell(cell => {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } };
+      cell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' },
+      };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
+
+    ws.columns = [
+      { width: 5 },   // No
+      { width: 32 },  // Name
+      { width: 28 },  // Kelas
+      { width: 20 },  // Tanggal Lahir
+      { width: 8 },   // Usia
+      { width: 32 },  // Nama Orang Tua
+      { width: 18 },  // No. Hp Orang Tua
+      { width: 24 },  // Kelompok
+      { width: 20 },  // Desa
+    ];
+
+    let no = 1;
+
+    function writeEntry(entry) {
+      const { student, classDoc } = entry;
+      const dateValue = student.dateOfBirth ? new Date(student.dateOfBirth) : null;
+      const kelas = entry.hasClass ? classDoc.name : 'Tidak terdaftar ke kelas';
+      const dateStr = dateValue ? formatDate(dateValue) : '';
+      const usia = dateValue ? calcAge(dateValue) : '';
+
+      ws.addRow([
+        no,
+        student.name || '',
+        kelas,
+        dateStr,
+        usia,
+        student.parentName || '',
+        student.parentPhone || '',
+        entry.subBranchName,
+        entry.branchName,
+      ]);
+      no++;
+    }
+
+    for (const entry of normal) writeEntry(entry);
+
+    if (flagged.length > 0) {
+      const sepRow = ws.addRow([]);
+      ws.mergeCells(sepRow.number, 1, sepRow.number, 9);
+      sepRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
+    }
+
+    for (const entry of flagged) writeEntry(entry);
+
+    const today = new Date();
+    const dd = String(today.getDate()).padStart(2, '0');
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const yyyy = today.getFullYear();
+    const dateStr = `${dd}-${mm}-${yyyy}`;
+
+    if (!isDryRun) {
+      if (!fs.existsSync(OUTPUT_DIR)) {
+        fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+      }
+      const filePath = path.join(OUTPUT_DIR, `DataCaberawit_${dateStr}.xlsx`);
+      await wb.xlsx.writeFile(filePath);
+      log.success(`   Written: DataCaberawit_${dateStr}.xlsx`);
+    } else {
+      log.info(`   [DRY-RUN] Would write: DataCaberawit_${dateStr}.xlsx`);
     }
 
     const duration = ((Date.now() - stats.startTime) / 1000).toFixed(2);
     log.section('SUMMARY');
     console.log(`  Academic Year:    ${stats.academicYearName}`);
     console.log(`  Branches:         ${stats.branchesSelected}`);
-    console.log(`  Files created:    ${stats.branchFilesCreated}`);
-    console.log(`  SubBranch sheets: ${stats.totalSubBranchSheets}`);
     console.log(`  Students total:   ${stats.totalStudentsExported}`);
     console.log(`    With class:     ${stats.studentsWithClass}`);
     console.log(`    No class:       ${stats.studentsWithoutClass}`);
