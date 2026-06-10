@@ -231,8 +231,8 @@ const patchAcademicYearMunaqasyahStatus = async (req, res, next) => {
             return next(new HttpError("Tahun Ajaran tidak ditemukan!", 404));
         }
 
-        // Check if any branchYear has munaqasyahStatus === 'inProgress'
-        const hasInProgress = (existingAcademicYear.branchYears || []).some(by => by.munaqasyahStatus === 'inProgress');
+        // Check if any branchYear has munaqasyahStatus === 'inProgress' or 'deferredInProgress'
+        const hasInProgress = (existingAcademicYear.branchYears || []).some(by => by.munaqasyahStatus === 'inProgress' || by.munaqasyahStatus === 'deferredInProgress');
         if (hasInProgress) {
             return next(new HttpError("Terdapat desa yang belum selesai munaqosah!", 400));
         }
@@ -243,7 +243,7 @@ const patchAcademicYearMunaqasyahStatus = async (req, res, next) => {
 
         console.log(`patched munaqosyahStatus for AcademicYearwith id ${academicYearId}`);
         res.json({
-            message: munaqasyahStatus === 'inProgress' ? 'Munaqosah dimulai!' : 'Munaqasyah selesai!',
+            message: munaqasyahStatus === 'inProgress' || munaqasyahStatus === 'deferredInProgress' ? 'Munaqosah dimulai!' : 'Munaqasyah selesai!',
             question: existingAcademicYear.toObject({ getters: true })
         });
 

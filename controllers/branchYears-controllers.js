@@ -555,11 +555,13 @@ const patchBranchYearMunaqasyahStatus = async (req, res, next) => {
             ).values()
         );
 
-        // Check if any subBranch has munaqasyahStatus === 'inProgress'
-        const hasInProgress = uniqueSubBranches.some(
-            (sb) => sb.munaqasyahStatus === "inProgress"
+        // Check if any subBranch has munaqasyahStatus === 'inProgress' or 'deferredInProgress'
+        const hasActiveMunaqasyah = uniqueSubBranches.some(
+            (sb) =>
+                sb.munaqasyahStatus === "inProgress" ||
+                sb.munaqasyahStatus === "deferredInProgress"
         );
-        if (hasInProgress) {
+        if (hasActiveMunaqasyah) {
             return next(
                 new HttpError("Terdapat kelompok yang masih munaqosah!", 400)
             );
@@ -619,7 +621,11 @@ const patchSubBranchMunaqasyahStatus = async (req, res, next) => {
         }
 
         // Check munaqasyahStatus of branchYear
-        if (existingBranchYear.munaqasyahStatus !== "inProgress") {
+        if (
+            existingBranchYear.munaqasyahStatus !== "inProgress" &&
+            existingBranchYear.munaqasyahStatus !== "deferredInProgress" &&
+            existingBranchYear.munaqasyahStatus !== "deferredCompleted"
+        ) {
             return next(new HttpError("Munaqasyah Desa belum dimulai!", 400));
         }
 
@@ -770,7 +776,8 @@ const patchSubBranchMunaqasyahStatus = async (req, res, next) => {
         );
         res.json({
             message:
-                munaqasyahStatus === "inProgress"
+                munaqasyahStatus === "inProgress" ||
+                munaqasyahStatus === "deferredInProgress"
                     ? "Munaqosah Kelompok dimulai!"
                     : "Munaqosah Kelompok selesai!",
             subBranch,
