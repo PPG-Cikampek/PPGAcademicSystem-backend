@@ -176,7 +176,13 @@ const getRequestedAccountsByUserId = async (req, res, next) => {
     const pageSize = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 100);
 
     const matchStage = {};
-    if (userId) matchStage.userId = userId;
+    if (userId) {
+        try {
+            matchStage.userId = new mongoose.Types.ObjectId(userId);
+        } catch (e) {
+            matchStage.userId = userId;
+        }
+    }
     if (status) matchStage.status = status;
     if (subBranchId) matchStage.subBranchId = subBranchId;
     if (startDate || endDate) {

@@ -540,7 +540,7 @@ const patchBranchYearMunaqasyahStatus = async (req, res, next) => {
         }
 
         if (identifiedBranchYear.isActive === false) {
-            return next(new HttpError(`Tahun ajaran nonaktif!`, 404));
+            return next(new HttpError(`Tidak dapat memulai munaqosah jika tahun ajaran nonaktif. Aktifkan tahun ajaran terlebih dahulu lalu coba lagi!`, 404));
         }
 
         // Collect all subBranches from all teachingGroups
