@@ -567,6 +567,123 @@ const patchBranchYearMunaqasyahStatus = async (req, res, next) => {
             );
         }
 
+        // Create score entries for all sub-branches when starting
+        if (
+            action === "inProgress" ||
+            action === "deferredInProgress"
+        ) {
+            // Re-fetch with full student population for score creation
+            const fullBranchYear = await BranchYear.findById(
+                branchYearId
+            ).populate({
+                path: "teachingGroups",
+                populate: [
+                    {
+                        path: "classes",
+                        populate: {
+                            path: "students",
+                            populate: {
+                                path: "userId",
+                                select: "subBranchId",
+                            },
+                        },
+                    },
+                    { path: "subBranches" },
+                ],
+            });
+
+            // Collect all students across all teaching groups
+            const allRelevantStudents = [];
+            for (const tg of fullBranchYear.teachingGroups || []) {
+                for (const cls of tg.classes || []) {
+                    for (const student of cls.students || []) {
+                        const studentSubBranchId =
+                            student.userId?.subBranchId;
+                        if (studentSubBranchId) {
+                            allRelevantStudents.push({
+                                student,
+                                teachingGroupId: tg._id,
+                                classId: cls._id,
+                                subBranchId: studentSubBranchId,
+                            });
+                        }
+                    }
+                }
+            }
+
+            // Fetch existing scores for this branchYear
+            const existingScores = await Score.find({
+                branchYearId: branchYearId,
+            }).select("studentId subBranchId");
+
+            const existingKeySet = new Set(
+                existingScores.map(
+                    (s) =>
+                        `${s.studentId.toString()}_${s.subBranchId.toString()}`
+                )
+            );
+
+            // Filter out students that already have score entries
+            const studentsNeedingScores = allRelevantStudents.filter(
+                ({ student, subBranchId }) =>
+                    !existingKeySet.has(
+                        `${student._id.toString()}_${subBranchId.toString()}`
+                    )
+            );
+
+            if (studentsNeedingScores.length > 0) {
+                const scoreEntries = studentsNeedingScores.map(
+                    ({
+                        student,
+                        teachingGroupId,
+                        classId,
+                        subBranchId,
+                    }) => ({
+                        userId: student.userId._id,
+                        studentId: student._id,
+                        studentNis: student.nis,
+                        branchYearId: branchYearId,
+                        subBranchId: subBranchId,
+                        teachingGroupId: teachingGroupId,
+                        classId: classId,
+                        isBeingScored: "false",
+                        reciting: { score: 0, examinerUserId: null },
+                        writing: { score: 0, examinerUserId: null },
+                        quranTafsir: { score: 0, examinerUserId: null },
+                        hadithTafsir: { score: 0, examinerUserId: null },
+                        practice: { score: 0, examinerUserId: null },
+                        moralManner: { score: 0, examinerUserId: null },
+                        memorizingSurah: {
+                            score: 0,
+                            examinerUserId: null,
+                        },
+                        memorizingHadith: {
+                            score: 0,
+                            examinerUserId: null,
+                        },
+                        memorizingDua: {
+                            score: 0,
+                            examinerUserId: null,
+                        },
+                        memorizingBeautifulName: {
+                            score: 0,
+                            examinerUserId: null,
+                        },
+                        knowledge: { score: 0, examinerUserId: null },
+                        independence: {
+                            score: 0,
+                            examinerUserId: null,
+                        },
+                    })
+                );
+
+                await Score.insertMany(scoreEntries);
+                console.log(
+                    `Created ${scoreEntries.length} new score entries at branch level`
+                );
+            }
+        }
+
         // All clear, update munaqasyahStatus
         identifiedBranchYear = await BranchYear.findByIdAndUpdate(
             branchYearId,
@@ -635,8 +752,11 @@ const patchSubBranchMunaqasyahStatus = async (req, res, next) => {
             return next(new HttpError("SubBranch tidak ditemukan!", 404));
         }
 
-        // Create score entries if the new status is 'inProgress'
-        if (munaqasyahStatus === "inProgress") {
+        // Create score entries if the new status is 'inProgress' or 'deferredInProgress'
+        if (
+            munaqasyahStatus === "inProgress" ||
+            munaqasyahStatus === "deferredInProgress"
+        ) {
             console.log(
                 "Processing score entries for subBranch:",
                 subBranchId
