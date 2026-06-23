@@ -479,13 +479,13 @@ const getClassScoresByBranchYearId = async (req, res, next) => {
     // 1. Fetch all scores for the branchYearId (for averages and ranking)
     let allClassScores;
     try {
-        allClassScores = await Score.find({ branchYearId });
+        allClassScores = await Score.find({ branchYearId }).populate('classId', 'name');
     } catch (err) {
         console.error(err);
         return next(new HttpError("Internal server error occurred!", 500));
     }
 
-    // 2. Calculate averages for each classId (across all subBranchId)
+    // 2. Calculate averages for each className (across all subBranchId)
     const classAverages = {};
     const materials = [
         'reciting', 'writing', 'quranTafsir', 'hadithTafsir', 'practice',
@@ -493,16 +493,16 @@ const getClassScoresByBranchYearId = async (req, res, next) => {
         'memorizingBeautifulName', 'knowledge', 'independence'
     ];
 
-    // Group scores by classId
+    // Group scores by className
     allClassScores.forEach(score => {
-        const cid = getClassIdString(score.classId)
-        if (!classAverages[cid]) classAverages[cid] = { scores: [] };
-        classAverages[cid].scores.push(score);
+        const cname = score.classId?.name || 'unknown';
+        if (!classAverages[cname]) classAverages[cname] = { scores: [] };
+        classAverages[cname].scores.push(score);
     });
 
-    // Calculate averages for each classId (across all subBranchId)
-    Object.keys(classAverages).forEach(cid => {
-        const scores = classAverages[cid].scores;
+    // Calculate averages for each className (across all subBranchId)
+    Object.keys(classAverages).forEach(cname => {
+        const scores = classAverages[cname].scores;
         const averages = {};
         materials.forEach(material => {
             const values = scores
@@ -512,15 +512,15 @@ const getClassScoresByBranchYearId = async (req, res, next) => {
                 ? Math.round(values.reduce((a, b) => a + b, 0) / values.length)
                 : null
         });
-        classAverages[cid].averageScores = averages;
+        classAverages[cname].averageScores = averages;
     });
 
-    // --- Calculate student ranking per classId ---
-    // For each class, calculate total score for each student, then rank
+    // --- Calculate student ranking per className ---
+    // For each className, calculate total score for each student, then rank
     const classStudentRanks = {};
-    const classStudentTotals = {}; // <-- Add this to store total students per class
-    Object.keys(classAverages).forEach(cid => {
-        const scores = classAverages[cid].scores;
+    const classStudentTotals = {};
+    Object.keys(classAverages).forEach(cname => {
+        const scores = classAverages[cname].scores;
         // Calculate total score for each student
         const studentTotals = scores.map(s => {
             let total = 0;
@@ -556,12 +556,12 @@ const getClassScoresByBranchYearId = async (req, res, next) => {
             }
         });
         // Map by scoreId for fast lookup
-        classStudentRanks[cid] = {};
+        classStudentRanks[cname] = {};
         studentTotals.forEach(stu => {
-            classStudentRanks[cid][stu.scoreId] = stu.rank;
+            classStudentRanks[cname][stu.scoreId] = stu.rank;
         });
-        // Store total students for this class
-        classStudentTotals[cid] = studentTotals.length;
+        // Store total students for this className
+        classStudentTotals[cname] = studentTotals.length;
     });
 
     // 3. Fetch filtered scores (by branchYearId and subBranchId if provided)
@@ -623,14 +623,14 @@ const getClassScoresByBranchYearId = async (req, res, next) => {
         classes: groupedClassesArray.map(group => ({
             classId: group.classId,
             scores: group.scores.map(x => {
-                const cid = getClassIdString(group.classId);
+                const cname = group.classId?.name || 'unknown';
                 const scoreId = x._id.toString();
                 const obj = x.toObject({ getters: true });
-                obj.studentRank = classStudentRanks[cid]?.[scoreId] || null;
-                obj.studentTotal = classStudentTotals[cid] || null;
+                obj.studentRank = classStudentRanks[cname]?.[scoreId] || null;
+                obj.studentTotal = classStudentTotals[cname] || null;
                 return obj;
             }),
-            averageScores: classAverages[getClassIdString(group.classId)]?.averageScores || null
+            averageScores: classAverages[group.classId?.name || 'unknown']?.averageScores || null
         }))
     });
 };
