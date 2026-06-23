@@ -96,17 +96,17 @@ function classSortKey(classDoc) {
 function getUniformCriteria(student, classDoc) {
   if (!classDoc) return 'Kelas Tidak Memenuhi Kriteria';
 
-  const className = (classDoc.name || '').toLowerCase().replace(/-/g, ' ');
-  if (className.includes('pra paud')) return 'Kelas Tidak Memenuhi Kriteria';
+  // const className = (classDoc.name || '').toLowerCase().replace(/-/g, ' ');
+  // if (className.includes('pra paud')) return 'Kelas Tidak Memenuhi Kriteria';
 
   const grade = extractGradeFromClass(classDoc);
   if (grade >= 6) return 'Kelas Tidak Memenuhi Kriteria';
 
-  // if (student.dateOfBirth) {
-  //   const dob = new Date(student.dateOfBirth);
-  //   const cutoff = new Date(2021, 7, 31);
-  //   if (dob > cutoff) return 'Tanggal Lahir Tidak Memenuhi Kriteria';
-  // }
+  if (student.dateOfBirth) {
+    const dob = new Date(student.dateOfBirth);
+    const cutoff = new Date(2021, 7, 31);
+    if (dob > cutoff) return 'Tanggal Lahir Tidak Memenuhi Kriteria';
+  }
 
   return '';
 }
@@ -276,7 +276,7 @@ async function processBranch(branch, activeAcademicYear) {
 
     const ws = wb.addWorksheet(sb.name);
 
-    const headers = ['No', 'Nama', 'NIS', 'Kelas', 'Tanggal Lahir', 'Usia', 'Ukuran Baju'];
+    const headers = ['No', 'Nama', 'NIS', 'Kelas', 'Tanggal Lahir', 'Usia', 'Jenis Kelamin', 'Ukuran Baju'];
     const headerRow = ws.addRow(headers);
     headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     headerRow.eachCell(cell => {
@@ -297,6 +297,7 @@ async function processBranch(branch, activeAcademicYear) {
       { width: 28 },
       { width: 20 },
       { width: 8 },
+      { width: 6 },
       { width: 34 },
     ];
 
@@ -331,6 +332,12 @@ async function processBranch(branch, activeAcademicYear) {
       return age;
     }
 
+    function formatGender(g) {
+      if (!g) return '';
+      const v = g.toLowerCase();
+      return (v === 'l' || v === 'male' || v === 'laki-laki' || v === 'lk') ? 'L' : 'P';
+    }
+
     let no = 1;
 
     for (const entry of normal) {
@@ -340,13 +347,13 @@ async function processBranch(branch, activeAcademicYear) {
       const dateStr = dateValue ? formatDate(dateValue) : '';
       const usia = dateValue ? calcAge(dateValue) : null;
 
-      ws.addRow([no, student.name || '', student.nis || '', kelas, dateStr, usia, '']);
+      ws.addRow([no, student.name || '', student.nis || '', kelas, dateStr, usia, formatGender(student.gender), '']);
       no++;
     }
 
     if (flagged.length > 0) {
       const sepRow = ws.addRow([]);
-      ws.mergeCells(sepRow.number, 1, sepRow.number, 7);
+      ws.mergeCells(sepRow.number, 1, sepRow.number, 8);
       sepRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF00' } };
 
       for (const entry of flagged) {
@@ -356,8 +363,8 @@ async function processBranch(branch, activeAcademicYear) {
         const dateStr = dateValue ? formatDate(dateValue) : '';
         const usia = dateValue ? calcAge(dateValue) : null;
 
-        const row = ws.addRow([no, student.name || '', student.nis || '', kelas, dateStr, usia, entry.ukuran]);
-        row.getCell(7).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF0000' } };
+        const row = ws.addRow([no, student.name || '', student.nis || '', kelas, dateStr, usia, formatGender(student.gender), entry.ukuran]);
+        row.getCell(8).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFF0000' } };
         no++;
       }
     }
